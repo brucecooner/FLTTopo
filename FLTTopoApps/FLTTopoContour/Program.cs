@@ -53,6 +53,12 @@ namespace FLTTopoContour
         // if true, produce grayscale image instead of contours
         static  Boolean grayScale = false;
 
+        // if true, produce alternatingly colored contours
+        static Boolean alternatingColorContours = false;
+
+        // if true, will discover min/max heights in data and report to console
+        static Boolean reportMinMaxHeights = false;
+
         // ---- timings ----
         static  Boolean reportTimings = false;
 
@@ -89,6 +95,12 @@ namespace FLTTopoContour
                                 break;
                             case 't' :
                                 reportTimings = true;
+                                break;
+                            case 'a' :
+                                alternatingColorContours = true;
+                                break;
+                            case 'm' :
+                                reportMinMaxHeights = true;
                                 break;
                             case '?' :
                                 helpRequested = true;
@@ -138,7 +150,9 @@ namespace FLTTopoContour
             Console.WriteLine( "      -? or ? : view available arguments" );
             Console.WriteLine( "      -cNNN : use height division NNN for contour lines (defaults to " + DEFAULT_CONTOUR_HEIGHTS + ")" );
             Console.WriteLine( "      -oMyOutputFile : Sends output to file 'MyOutputFile.bmp'" );
+            Console.WriteLine( "      -a : odd/even contours rendered in different colors" );
             Console.WriteLine( "      -g : creates grayscale bmp, black and white are lowest and highest values in height data, respectively." );
+            Console.WriteLine( "      -m : discovers min/max heights in data, reports to console" );
             Console.WriteLine( "      -t : report on timing of operations" );
         }
 
@@ -241,6 +255,9 @@ namespace FLTTopoContour
             Int32 whitePixel = (Int32)(((byte)0xFF << 24) | (0xFF << 16) | (0xFF << 8) | 0xFF);
             Int32 blackPixel = (Int32)(((byte)0xFF << 24) | 0);//(pixelValue << 16) | (pixelValue << 8) | pixelValue);
 
+            Int32 redPixel = (Int32)(((byte)0xFF << 24) | (0xFF << 16) | (0x0 << 8) | 0x0);
+            Int32 greenPixel = (Int32)(((byte)0xFF << 24) | (0x0 << 16) | (0xFF << 8) | 0x0);
+
 #if false
             Int32 currentPixel = blackPixel;
 
@@ -263,8 +280,65 @@ namespace FLTTopoContour
             Int32[]       pixels = new Int32[ topoData.NumRows() * topoData.NumCols() ];
 
             // ------------------------------
-            // single pixel row computation 
-            Func<int, int>ComputePixelRow = ( row ) =>
+            // single pixel row computation (alternating color of odd/even contours)
+            Func<int, int> ComputePixelRowAlternatingColorContours = (row) =>
+            {
+                float leftValue = topoData.ValueAt(row, 0);
+                // index to first pixel in row
+                int currentPixelIndex = row * topoData.NumCols();
+
+                Int32 currentPixel = blackPixel;
+
+                for (int col = 0; col < topoData.NumCols(); ++col)
+                {
+                    float aboveValue = topoData.ValueAt(row - 1, col);
+                    float currentValue = topoData.ValueAt(row, col);
+
+                    bool drawCurrent = ((currentValue != leftValue) || (currentValue != aboveValue)) ? true : false;
+
+                    float highestValue = currentValue;
+
+                    if (aboveValue > highestValue)
+                    {
+                        highestValue = aboveValue;
+                    }
+                    if (leftValue > highestValue)
+                    {
+                        highestValue = leftValue;
+                    }
+
+                    if (drawCurrent)
+                    {
+                        currentPixel = blackPixel;
+
+                        Int32 evenOdd = Convert.ToInt32(highestValue / contourHeights % 2);
+
+                        if (evenOdd <= 0)
+                        {
+                            currentPixel = redPixel;
+                        }
+                        else
+                        {
+                            currentPixel = greenPixel;
+                        }
+                    }
+                    else
+                    {
+                        currentPixel = whitePixel;
+                    }
+
+                    pixels[currentPixelIndex] = currentPixel;
+
+                    ++currentPixelIndex;
+                    leftValue = currentValue;
+                }
+
+                return row;
+            };
+
+            // ------------------------------
+            // single pixel row computation (all contours same color)
+            Func<int, int>ComputePixelRowSingleColorContours = ( row ) =>
             {
                 float   leftValue = topoData.ValueAt( row, 0 );
                 // index to first pixel in row
@@ -290,13 +364,23 @@ namespace FLTTopoContour
             // -----------------------------
             System.Console.WriteLine( "Computing pixel rows" );
 
-            // Hmmm, looks like this leaves row 0 of the bitmap blank. The parallel has to start at row 1
-            // because the inner func uses the row above, so need to brute force row 0 or something.
-            Parallel.For( 1, topoData.NumRows(), row =>
+
+            // Hmmm, looks like these loops leave row 0 of the bitmap blank. The parallel has to start at row 1
+            // because the inner func uses the row-1, so need to brute force row 0 or something.
+            if ( alternatingColorContours )
             {
-                ComputePixelRow( row );
+                Parallel.For( 1, topoData.NumRows(), row =>
+                {
+                    ComputePixelRowAlternatingColorContours( row );
+                } );
             }
-            );
+            else
+            {
+                Parallel.For( 1, topoData.NumRows(), row =>
+                {
+                    ComputePixelRowSingleColorContours( row );
+                } );
+            }
 
             // ------------------------------
             // create bitmap
@@ -377,25 +461,20 @@ namespace FLTTopoContour
                 {
                     System.Console.WriteLine( "Outputting grayscale image." );
                 }
+                if ( alternatingColorContours )
+                {
+                    System.Console.WriteLine( "Alternating colors for odd/even contours." );
+                }
+                if ( reportMinMaxHeights )
+                {
+                    System.Console.WriteLine( "Reporting min/max heights of data." );
+                }
                 System.Console.WriteLine( "- - - - - - - - - - -" );
-
-                // ---- test for file existence ----
-                /*
-                // TODO : this sort of specialized file knowledge should be in the ftl library
-                if ( !File.Exists( inputFileBaseName + ".hdr" ) )
-                {
-                    Console.WriteLine( "Error : Input file " + inputFileBaseName + ".hdr not found." );
-                }
-
-                if (!File.Exists(inputFileBaseName + ".flt"))
-                {
-                    Console.WriteLine("Error : Input file " + inputFileBaseName + ".flt not found.");
-                }
-                 */
 
                 // ---- read data ----
                 try
                 {
+                    stopwatch.Reset();
                     stopwatch.Start();
 
                     topoData.ReadFromFiles(inputFileBaseName);
@@ -421,11 +500,32 @@ namespace FLTTopoContour
 
                 System.Console.WriteLine("- - - - - - - - - - -");
 
+                // ---- report min max height ----
+                if ( reportMinMaxHeights )
+                {
+                    System.Console.WriteLine( "Finding min/max heights..." );
+                    stopwatch.Reset();
+                    stopwatch.Start();
+
+                    topoData.FindMinMax();
+                    System.Console.WriteLine( "Minimum height found : " + topoData.MinimumElevation );
+                    System.Console.WriteLine( "Maximum height found : " + topoData.MaximumElevation );
+
+                    lastOperationTimingMS = stopwatch.ElapsedMilliseconds;
+                    if (reportTimings)
+                    {
+                        System.Console.WriteLine("Min/Max discovery took " + (lastOperationTimingMS / 1000.0f) + " seconds.");
+                    }
+
+                    System.Console.WriteLine("- - - - - - - - - - -");
+                }   // end if reportMinMaxHeights
+
                 // ---- quantize data ----
                 if ( contourHeights > 1 )
                 {
                     System.Console.WriteLine( "Quantizing topo data." );
 
+                    stopwatch.Reset();
                     stopwatch.Start();
 
                     topoData.Quantize( contourHeights );
@@ -444,6 +544,7 @@ namespace FLTTopoContour
                 {
                     System.Console.WriteLine( "Creating grayscale bitmap." );
 
+                    stopwatch.Reset();
                     stopwatch.Start();
 
                     TopoToGrayScaleBitmap(topoData, outputFileName);
@@ -461,6 +562,7 @@ namespace FLTTopoContour
                     // make contour map
                     System.Console.WriteLine( "Creating contour map." );
 
+                    stopwatch.Reset();
                     stopwatch.Start();
 
                     TopoToContourBitmap( topoData, outputFileName );

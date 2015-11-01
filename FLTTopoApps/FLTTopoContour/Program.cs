@@ -32,8 +32,7 @@ using FLTDataLib;
  *  -file overwrite confirmation
     -'slice' mode
     -subgrid processing
-    -configurable colors
-    -config file
+    -config file?
  *  -suppress output?
  * */
 
@@ -47,11 +46,17 @@ namespace FLTTopoContour
         // different options the user specifies
         enum OptionType
         {
-            HelpRequest,
-            ReportTimings,
-            Mode,
-            OutputFile,
-            ContourHeights
+            HelpRequest,        // list options
+            ReportTimings,      // report how long various operations took
+            Mode,               // output topo map type
+            OutputFile,         // name of output file
+            ContourHeights,     // vertical distance between contours
+            BackgroundColor,    // color of 'ground' between contour lines
+            ContourColor,       // color of contour lines in normal mode
+            AlternatingColor1,  // color of half the lines in alternating mode
+            AlternatingColor2,  // color of other half of lines in alternating mode
+            GradientLoColor,    // color at lowest point in gradient mode
+            GradientHiColor     // color at highest point in gradient mode
         };
 
         // different types of contour maps the app can produce
@@ -59,7 +64,7 @@ namespace FLTTopoContour
         {
             Normal          = 'n',    // regular-like topo map, contour lines every contourHeights feet
             Alternating     = 'a',    // alternating contour lines are made in alternating colors
-            Gradient        = 'g'     // image rendered with color gradient from lowest point (default:black) to highest point (default:white) at contourHeights steps
+            Gradient        = 'g'     // image rendered with color gradient from lowest point (Color1) to highest point (Color2) at contourHeights steps
         }
 
         delegate Boolean ParseOptionDelegate( String input, ref String parseErrorString );
@@ -92,6 +97,7 @@ namespace FLTTopoContour
         const String ConsoleSectionSeparator = "- - - - - - - - - - -";
         const String BannerMessage = "FLT Topo Data Contour Generator (run with '?' for options list)";  // "You wouldn't like me when I'm angry."
         const char HelpRequestChar = '?';
+        const String ColorsHelpMessage = "Note : Colors are specified as a 'hex triplet' of the form RRGGBB\nwhere RR = red value, GG = green value, and BB = blue value.\nThe values are given in base-16.";
 
         const Int32 MinimumContourHeights = 5;
 
@@ -99,6 +105,24 @@ namespace FLTTopoContour
         const String DefaultOutputFileSuffix = "_topo";
         const int DefaultContourHeights = 200;
         const OutputModeType DefaultOutputMode = OutputModeType.Normal;
+
+        const String DefaultBackgroundColorString = "FFFFFF";
+        const Int32 DefaultBackgroundColor = (Int32)(((byte)0xFF << 24) | (0xFF << 16) | (0xFF << 8) | 0xFF); // white
+
+        const String DefaultContourColorString = "000000";
+        const Int32 DefaultContourColor = (Int32)(((byte)0xFF << 24) | 0); // black
+
+        const String DefaultAlternatingColor1String = "FF0000";
+        const Int32 DefaultAlternatingColor1 = (Int32)(((byte)0xFF << 24) | (0xFF << 16) | (0x0 << 8) | 0x0); // red
+
+        const String DefaultAlternatingColor2String = "00FF00";
+        const Int32 DefaultAlternatingColor2 = (Int32)(((byte)0xFF << 24) | (0x0 << 16) | (0xFF << 8) | 0x0); // green
+
+        const String DefaultGradientLoColorString = "000000";
+        const Int32 DefaultGradientLoColor = (Int32)(((byte)0xFF << 24) | (0x55 << 16) | (0x55 << 8) | 0x55); // gray-ish
+
+        const String DefaultGradientHiColorString = "000000";
+        const Int32 DefaultGradientHiColor = (Int32)(((byte)0xFF << 24) | (0xFF << 16) | (0xFF << 8) | 0xFF); // white
 
         // OPTIONS
         // supported options
@@ -119,6 +143,26 @@ namespace FLTTopoContour
         static  Boolean reportTimings = false;
 
         static String parseErrorMessage = "";
+
+        // background color (used in normal and alternating modes)
+        static Int32 backgroundColor = DefaultBackgroundColor;
+        static String backgroundColorString = DefaultBackgroundColorString;
+
+        // normal mode 
+        static Int32 contourColor = DefaultContourColor;
+        static String contourColorString = DefaultContourColorString;
+
+        // alternating mode 
+        static Int32 alternatingContourColor1 = DefaultAlternatingColor1;
+        static String alternatingContourColor1String = DefaultAlternatingColor1String;
+        static Int32 alternatingContourColor2 = DefaultAlternatingColor2;
+        static String alternatingContourColor2String = DefaultAlternatingColor2String;
+
+        // gradient mode 
+        static Int32 gradientLoColor = DefaultGradientLoColor;
+        static String gradientLoColorString = DefaultGradientLoColorString;
+        static Int32 gradientHiColor = DefaultGradientHiColor;
+        static String gradientHiColorString = DefaultGradientHiColorString;
 
         // ---- parse delegates ----
         // ------------------------------------------------------
@@ -161,6 +205,122 @@ namespace FLTTopoContour
             }
 
             return parsed;
+        }
+
+        // ------------------------------------------------------
+        // converts hex triplet to 32 bit pixel (note : does NOT expect 0x prefix on string)
+        static private Int32 ParseColorHexTriplet( String input, ref Boolean parsed, ref String parseErrorString )
+        {
+            parsed = true;
+            Int32 colorValue = 0;
+
+            if (6 != input.Length)
+            {
+                parsed = false;
+                parseErrorString = "color string not six digits in length";
+            }
+            else
+            {
+                String redString = input.Substring( 0, 2 );
+                String greenString = input.Substring( 2, 2 );
+                String blueString = input.Substring( 4, 2 );
+
+                Int32 redValue = 0;
+                Int32 greenValue = 0;
+                Int32 blueValue = 0; 
+
+                try
+                {
+                    redValue = Convert.ToInt32( redString, 16 );
+                }
+                catch ( System.FormatException )
+                {
+                    parsed = false;
+                    parseErrorString = "could not convert '" + redString + "' to red value";
+                }
+
+                try
+                {
+                    greenValue = Convert.ToInt32( greenString, 16 );
+                    blueValue = Convert.ToInt32( blueString, 16 );
+                }
+                catch (System.FormatException)
+                {
+                    parsed = false;
+                    parseErrorString = "could not convert '" + greenString + "' to green value";
+                }
+
+                try
+                {
+                    blueValue = Convert.ToInt32(blueString, 16);
+                }
+                catch (System.FormatException)
+                {
+                    parsed = false;
+                    parseErrorString = "could not convert '" + blueString + "' to blue value";
+                }
+
+                colorValue = (Int32)(((byte)0xFF << 24) | (redValue << 16) | (greenValue << 8) | blueValue);
+            }
+
+            return colorValue;
+        }
+
+        // ------------------------------------------------------
+        // generalized color parsing
+        static private Boolean ParseColor( String input, String colorDescription, ref String parseErrorString, ref Int32 colorOut, ref String colorStringOut )
+        {
+            Boolean parsed = true;
+
+            String parseError = "";
+            colorOut = ParseColorHexTriplet(input, ref parsed, ref parseError);
+
+            if (false == parsed)
+            {
+                parseErrorString = "Converting '" + input + "' to " + colorDescription + ", " + parseError;
+            }
+            else
+            {
+                colorStringOut = input;
+            } 
+
+            return parsed;
+        }
+
+        // ------------------------------------------------------
+        static private Boolean ParseBackgroundColor( String input, ref String parseErrorString )
+        {
+            return ParseColor( input, optionTypeToSpecDict[ OptionType.BackgroundColor ].Description, ref parseErrorString, ref backgroundColor, ref backgroundColorString );
+        }
+
+        // ------------------------------------------------------
+        static private Boolean ParseContourColor(String input, ref String parseErrorString)
+        {
+            return ParseColor( input, optionTypeToSpecDict[ OptionType.ContourColor ].Description, ref parseErrorString, ref contourColor, ref contourColorString );
+        }
+
+        // ------------------------------------------------------
+        static private Boolean ParseAlternatingContourColor1( String input, ref String parseErrorString)
+        {
+            return ParseColor( input, optionTypeToSpecDict[ OptionType.AlternatingColor1 ].Description, ref parseErrorString, ref alternatingContourColor1, ref alternatingContourColor1String );
+        }
+
+        // ------------------------------------------------------
+        static private Boolean ParseAlternatingContourColor2(String input, ref String parseErrorString)
+        {
+            return ParseColor( input, optionTypeToSpecDict[ OptionType.AlternatingColor2 ].Description, ref parseErrorString, ref alternatingContourColor2, ref alternatingContourColor2String );
+        }
+
+        // ------------------------------------------------------
+        static private Boolean ParseGradientLoColor(String input, ref String parseErrorString)
+        {
+            return ParseColor( input, optionTypeToSpecDict[ OptionType.GradientLoColor ].Description, ref parseErrorString, ref gradientLoColor, ref gradientLoColorString );
+        }
+
+        // ---------------------------------------------------------
+        static private Boolean ParseGradientHiColor( String input, ref String parseErrorString )
+        {
+            return ParseColor( input, optionTypeToSpecDict[ OptionType.GradientHiColor ].Description, ref parseErrorString, ref gradientHiColor, ref gradientHiColorString );
         }
 
         // ------------------------------------------------------
@@ -211,10 +371,10 @@ namespace FLTTopoContour
                                                                                                 HelpText = "Normal contour map" });
             outputModeToSpecifierDict.Add( OutputModeType.Gradient,      new OptionSpecifier {  Specifier = ((char)OutputModeType.Gradient).ToString(),    
                                                                                                 Description = "Gradient",
-                                                                                                HelpText = "Gradient" });
+                                                                                                HelpText = "Gradient of colors between lowest and highest elevations on map" });
             outputModeToSpecifierDict.Add( OutputModeType.Alternating,   new OptionSpecifier {  Specifier = ((char)OutputModeType.Alternating).ToString(), 
                                                                                                 Description = "Alternating",
-                                                                                                HelpText = "Alternating colored contour lines" } );
+                                                                                                HelpText = "Contour line colors alternate between altcolor1 and altcolor2" } );
 
             optionTypeToSpecDict = new Dictionary< OptionType, OptionSpecifier>( Enum.GetNames(typeof(OptionType)).Length );
 
@@ -222,24 +382,50 @@ namespace FLTTopoContour
                                                                                         Description = "Help (list available options)",
                                                                                         HelpText = ": print all available parameters",
                                                                                         ParseDelegate = ParseHelpRequest } );
-            optionTypeToSpecDict.Add( OptionType.ReportTimings, new OptionSpecifier{    Specifier = "t", 
+            optionTypeToSpecDict.Add( OptionType.ReportTimings, new OptionSpecifier{    Specifier = "timings", 
                                                                                         Description = "Report Timings",
                                                                                         HelpText = ": report Timings",
                                                                                         ParseDelegate = ParseReportTimings });
                                                                                         
-            optionTypeToSpecDict.Add( OptionType.Mode,          new OptionSpecifier{    Specifier = "m", 
+            optionTypeToSpecDict.Add( OptionType.Mode,          new OptionSpecifier{    Specifier = "mode", 
                                                                                         Description = "Output mode",
                                                                                         HelpText = "<M>: mode (type of output)", 
                                                                                         AllowedValues = outputModeToSpecifierDict.Values.ToList<OptionSpecifier>(), 
                                                                                         ParseDelegate = ParseMode });
-            optionTypeToSpecDict.Add( OptionType.OutputFile,    new OptionSpecifier{    Specifier = "o", 
+            optionTypeToSpecDict.Add( OptionType.OutputFile,    new OptionSpecifier{    Specifier = "outfile", 
                                                                                         Description = "Output file",
                                                                                         HelpText = "<OutputFile>: specifies output image file",
                                                                                         ParseDelegate = ParseOutputFile });
-            optionTypeToSpecDict.Add( OptionType.ContourHeights,new OptionSpecifier{    Specifier = "c", 
+            optionTypeToSpecDict.Add( OptionType.ContourHeights,new OptionSpecifier{    Specifier = "cont", 
                                                                                         Description = "Contour heights",
-                                                                                        HelpText = "<NNN>: Contour height separation (every NNN units), Minimum allowed value : " + MinimumContourHeights,
+                                                                                        HelpText = "<NNN>: Contour height separation (every NNN units), Minimum : " + MinimumContourHeights,
                                                                                         ParseDelegate = ParseContourHeights } );
+            optionTypeToSpecDict.Add(OptionType.BackgroundColor,new OptionSpecifier{    Specifier = "bgcolor",
+                                                                                        Description = "Background color",
+                                                                                        HelpText = "<RRGGBB>: Background Color",
+                                                                                        ParseDelegate = ParseBackgroundColor });
+            optionTypeToSpecDict.Add(OptionType.ContourColor, new OptionSpecifier{     Specifier = "concolor",
+                                                                                        Description = "Contour lines color",
+                                                                                        HelpText = "<RRGGBB>: color of contour lines in normal mode",
+                                                                                        ParseDelegate = ParseContourColor });
+            optionTypeToSpecDict.Add(OptionType.AlternatingColor1, new OptionSpecifier{ Specifier = "altcolor1",
+                                                                                        Description = "Alternating contour colors 1",
+                                                                                        HelpText = "<RRGGBB>: color 1 in alternating mode",
+                                                                                        ParseDelegate = ParseAlternatingContourColor1 });
+            optionTypeToSpecDict.Add(OptionType.AlternatingColor2, new OptionSpecifier{ Specifier = "altcolor2",
+                                                                                        Description = "Alternating contour colors 2",
+                                                                                        HelpText = "<RRGGBB>: color 2 in alternating mode",
+                                                                                        ParseDelegate = ParseAlternatingContourColor2 });
+            optionTypeToSpecDict.Add(OptionType.GradientLoColor, new OptionSpecifier{   Specifier = "gradlocolor",
+                                                                                        Description = "Gradient mode low point color",
+                                                                                        HelpText = "<RRGGBB> color of lowest points on map in gradient mode",
+                                                                                        ParseDelegate = ParseGradientLoColor });
+            optionTypeToSpecDict.Add(OptionType.GradientHiColor, new OptionSpecifier{   Specifier = "gradhicolor",
+                                                                                        Description = "Gradient mode high point color",
+                                                                                        HelpText = "<RRGGBB> color of highest points on map in gradient mode",
+                                                                                        ParseDelegate = ParseGradientHiColor
+            });
+
         }
 
         // --------------------------------------------------------------------------------------
@@ -275,6 +461,7 @@ namespace FLTTopoContour
                     }
                 }
             }
+            Console.WriteLine( ColorsHelpMessage );
         }
 
         // -------------------------------------------------------------------------------------
@@ -373,20 +560,44 @@ namespace FLTTopoContour
             Console.WriteLine(optionTypeToSpecDict[OptionType.Mode].Description + " : " + outputModeToSpecifierDict[outputMode].Description);
             Console.WriteLine(optionTypeToSpecDict[OptionType.ContourHeights].Description + " : " + contourHeights);
             Console.WriteLine(optionTypeToSpecDict[OptionType.ReportTimings].Description + " : " + (reportTimings ? "yes" : "no"));
+            // only report colors if changed from default
+            if ( backgroundColor != DefaultBackgroundColor )
+            {
+                Console.WriteLine( optionTypeToSpecDict[OptionType.BackgroundColor].Description + " : " + backgroundColorString );
+            }
+            if ( contourColor != DefaultContourColor )
+            {
+                Console.WriteLine(optionTypeToSpecDict[OptionType.ContourColor].Description + " : " + contourColorString);
+            }
+            if ( alternatingContourColor1 != DefaultAlternatingColor1 )
+            {
+                Console.WriteLine(optionTypeToSpecDict[OptionType.AlternatingColor1].Description + " : " + alternatingContourColor1String);
+            }
+            if (alternatingContourColor2 != DefaultAlternatingColor2)
+            {
+                Console.WriteLine(optionTypeToSpecDict[OptionType.AlternatingColor2].Description + " : " + alternatingContourColor2String);
+            }
+            if (gradientLoColor != DefaultGradientLoColor)
+            {
+                Console.WriteLine(optionTypeToSpecDict[OptionType.GradientLoColor].Description + " : " + gradientLoColorString);
+            }
+            if (gradientHiColor != DefaultGradientHiColor)
+            {
+                Console.WriteLine(optionTypeToSpecDict[OptionType.GradientHiColor].Description + " : " + gradientHiColorString);
+            }
         }
 
-        // TODO : move to where they should live
-        static  int lowRed = 85;
-        static  int lowGreen = 85;
-        static  int lowBlue = 85;
+        static  int lowRed;
+        static  int lowGreen;
+        static  int lowBlue;
 
-        static  int highRed = 255;
-        static  int highGreen = 255;
-        static  int highBlue = 255;
+        static  int highRed;
+        static  int highGreen;
+        static  int highBlue;
 
-        static  int redRange = highRed - lowRed;
-        static  int greenRange = highGreen - lowGreen;
-        static  int blueRange = highBlue - lowBlue;
+        static  int redRange;
+        static  int greenRange;
+        static  int blueRange;
 
         static  Int32     NormalizedHeightToColor( float height )
         {
@@ -398,8 +609,21 @@ namespace FLTTopoContour
         }
 
         // -------------------------------------------------------------------------------------------------------------------
-        static  void    TopoToGrayScaleBitmap( FLTTopoData   topoData, String fileName )
+        static  void    TopoToGradientBitmap( FLTTopoData   topoData, String fileName )
         {
+            // get gradient colors
+            lowRed = (gradientLoColor >> 16) & 0xFF;
+            lowGreen = (gradientLoColor >> 8) & 0xFF;
+            lowBlue = gradientLoColor & 0xFF;
+
+            highRed = (gradientHiColor >> 16) & 0xFF;
+            highGreen = (gradientHiColor >> 8) & 0xFF;
+            highBlue = gradientHiColor & 0xFF;
+
+            redRange = highRed - lowRed;
+            greenRange = highGreen - lowGreen;
+            blueRange = highBlue - lowBlue;
+
             if ( false == topoData.MinMaxFound )
             {
                 topoData.FindMinMax();
@@ -413,28 +637,26 @@ namespace FLTTopoContour
             Int32[]     pixels = new Int32[ topoData.NumCols() * topoData.NumRows() ];
 
             // generate grayscale bitmap from normalized topo data
-            for (int row = 0; row < topoData.NumRows(); ++row)
+            //for (int row = 0; row < topoData.NumRows(); ++row)
+            Parallel.For ( 0, topoData.NumRows(), row =>
             {
+                int offset = row * topoData.NumCols();
+
                 for (int col = 0; col < topoData.NumCols(); ++col)
-                //Parallel.For( 0, topoData.NumCols(), col =>
                 {
                     float normalizedValue = (topoData.ValueAt(row, col) - topoData.MinimumElevation) * oneOverRange;
-
-                    /*
-                    if ( normalizedValue > 0.25f )
-                    {
-                        int breakpoint = 1;
-                    }
-                     * */
 
                     //byte    pixelValue = (byte)(normalizedValue * 255.0f);
                     // grayscale (for now)
                     //Int32 argb = (Int32)(((byte)0xFF << 24) | (pixelValue << 16) | (pixelValue << 8) | pixelValue);
 
                     //bmp.SetPixel(col, row, Color.FromArgb(argb));
-                    pixels[ row * topoData.NumCols() + col ] = NormalizedHeightToColor( normalizedValue );// argb;
-                }  //);  // end Parallel.For col
-            }   // end for row
+                    //pixels[ row * topoData.NumCols() + col ] = NormalizedHeightToColor( normalizedValue );// argb;
+                    pixels[ offset ] = NormalizedHeightToColor(normalizedValue);// argb;
+                    ++offset;
+                }  
+            //}   // end for row
+            } );    // end parallel.for row
 
             System.Runtime.InteropServices.GCHandle handle = System.Runtime.InteropServices.GCHandle.Alloc(pixels, System.Runtime.InteropServices.GCHandleType.Pinned);
             try
@@ -472,13 +694,11 @@ namespace FLTTopoContour
             //Create an empty Bitmap of the expected size
             Bitmap contourMap = new Bitmap(topoData.NumCols(), topoData.NumRows(), System.Drawing.Imaging.PixelFormat.Format32bppRgb);
 
-            Int32 whitePixel = (Int32)(((byte)0xFF << 24) | (0xFF << 16) | (0xFF << 8) | 0xFF);
-            Int32 blackPixel = (Int32)(((byte)0xFF << 24) | 0);//(pixelValue << 16) | (pixelValue << 8) | pixelValue);
-
-            Int32 redPixel = (Int32)(((byte)0xFF << 24) | (0xFF << 16) | (0x0 << 8) | 0x0);
-            Int32 greenPixel = (Int32)(((byte)0xFF << 24) | (0x0 << 16) | (0xFF << 8) | 0x0);
+            //Int32 redPixel = (Int32)(((byte)0xFF << 24) | (0xFF << 16) | (0x0 << 8) | 0x0);
+            //Int32 greenPixel = (Int32)(((byte)0xFF << 24) | (0x0 << 16) | (0xFF << 8) | 0x0);
 
 #if false
+            // normal, slow way
             Int32 currentPixel = blackPixel;
 
             // serial operation
@@ -507,7 +727,7 @@ namespace FLTTopoContour
                 // index to first pixel in row
                 int currentPixelIndex = row * topoData.NumCols();
 
-                Int32 currentPixel = blackPixel;
+                Int32 currentPixel = backgroundColor;
 
                 for (int col = 0; col < topoData.NumCols(); ++col)
                 {
@@ -529,22 +749,22 @@ namespace FLTTopoContour
 
                     if (drawCurrent)
                     {
-                        currentPixel = blackPixel;
+                        currentPixel = backgroundColor;
 
                         Int32 evenOdd = Convert.ToInt32(highestValue / contourHeights % 2);
 
                         if (evenOdd <= 0)
                         {
-                            currentPixel = redPixel;
+                            currentPixel = alternatingContourColor1;
                         }
                         else
                         {
-                            currentPixel = greenPixel;
+                            currentPixel = alternatingContourColor2;
                         }
                     }
                     else
                     {
-                        currentPixel = whitePixel;
+                        currentPixel = backgroundColor; 
                     }
 
                     pixels[currentPixelIndex] = currentPixel;
@@ -564,14 +784,14 @@ namespace FLTTopoContour
                 // index to first pixel in row
                 int     currentPixelIndex = row * topoData.NumCols();
 
-                Int32   currentPixel = blackPixel;
+                Int32   currentPixel = backgroundColor;
 
                 for ( int col = 0; col < topoData.NumCols(); ++col )
                 {
                     float   aboveValue = topoData.ValueAt( row - 1, col );
                     float   currentValue = topoData.ValueAt( row, col );
 
-                    currentPixel = ((currentValue != leftValue) || (currentValue != aboveValue)) ? blackPixel : whitePixel;
+                    currentPixel = ((currentValue != leftValue) || (currentValue != aboveValue)) ? contourColor : backgroundColor;
 
                     pixels[ currentPixelIndex ] = currentPixel;
 
@@ -670,15 +890,7 @@ namespace FLTTopoContour
             System.Console.WriteLine( "Version : " + versionNumber.ToString() );
 
             // ----- parse program arguments -----
-#if true
             Boolean parsed = ParseArgs(args);
-#else
-            // testing
-            string[] testArgs = new string[2];
-            testArgs[0] = "inputTsetFile";
-            testArgs[1] = "-mn";
-            Boolean parsed = ParseArgs( testArgs );
-#endif
 
             if ( false == parsed )
             {
@@ -727,7 +939,6 @@ namespace FLTTopoContour
                     throw;
                 }
 
-
                 lastOperationTimingMS = stopwatch.ElapsedMilliseconds;
                 if (reportTimings)
                 {
@@ -758,18 +969,18 @@ namespace FLTTopoContour
                 System.Console.WriteLine( ConsoleSectionSeparator );
                 if ( OutputModeType.Gradient == outputMode )
                 {
-                    System.Console.WriteLine( "Creating grayscale bitmap." );
+                    System.Console.WriteLine( "Creating bitmap." );
 
                     stopwatch.Reset();
                     stopwatch.Start();
 
-                    TopoToGrayScaleBitmap(topoData, outputFileName);
+                    TopoToGradientBitmap(topoData, outputFileName);
 
                     stopwatch.Stop();
                     lastOperationTimingMS = stopwatch.ElapsedMilliseconds;
                     if (reportTimings)
                     {
-                        System.Console.WriteLine("Grayscale creation took " + (lastOperationTimingMS / 1000.0f) + " seconds.");
+                        System.Console.WriteLine("Creation took " + (lastOperationTimingMS / 1000.0f) + " seconds.");
                         // took 145 seconds with 'large' grid
                     }
                 }
@@ -797,3 +1008,4 @@ namespace FLTTopoContour
         }
     }
 }
+

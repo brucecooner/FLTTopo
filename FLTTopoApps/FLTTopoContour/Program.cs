@@ -1,4 +1,4 @@
-﻿/*
+﻿ /*
      This file is part of the FLTTopo suite of utilities and libraries.
 
     FLTTopo is free software: you can redistribute it and/or modify
@@ -14,6 +14,8 @@
     You should have received a copy of the GNU General Public License
     along with FLTTopo.  If not, see <http://www.gnu.org/licenses/>.
  */
+
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -27,135 +29,353 @@ using FLTDataLib;
 
 /*
  *  TODO :
- *  -input validation
- *  -color different heights ?
  *  -file overwrite confirmation
+    -'slice' mode
+    -subgrid processing
+    -configurable colors
+    -config file
+ *  -suppress output?
  * */
 
 namespace FLTTopoContour
 {
     class Program
     {
+        const float versionNumber = 1.1f;
+
+        // TYPES
+        // different options the user specifies
+        enum OptionType
+        {
+            HelpRequest,
+            ReportTimings,
+            Mode,
+            OutputFile,
+            ContourHeights
+        };
+
+        // different types of contour maps the app can produce
+        enum OutputModeType
+        {
+            Normal          = 'n',    // regular-like topo map, contour lines every contourHeights feet
+            Alternating     = 'a',    // alternating contour lines are made in alternating colors
+            Gradient        = 'g'     // image rendered with color gradient from lowest point (default:black) to highest point (default:white) at contourHeights steps
+        }
+
+        delegate Boolean ParseOptionDelegate( String input, ref String parseErrorString );
+
+        class OptionSpecifier
+        {
+            public String   Specifier;          // string that triggers option
+            public String   HelpText;           // shown in help mode
+            public String   Description;        // used when reporting option
+
+            public ParseOptionDelegate ParseDelegate;   // used to translate input text to option value
+
+            // list of (string type only) parameters that can specify values for this parameter
+            public List<OptionSpecifier> AllowedValues;
+
+            public OptionSpecifier()
+            {
+                Specifier = "";
+                HelpText = "";
+                ParseDelegate = null;
+                AllowedValues = null;
+            }
+        };
+
+        // TODO : settle on a capitalization scheme here
+
         // CONSTANTS
         const String noInputsErrorMessage = "No inputs.";
         const String noInputFileSpecifiedErrorMessage = "No input file specified.";
-        const int DEFAULT_CONTOUR_HEIGHTS = 200;
-        static int contourHeights = DEFAULT_CONTOUR_HEIGHTS;
+        const String ConsoleSectionSeparator = "- - - - - - - - - - -";
+        const String BannerMessage = "FLT Topo Data Contour Generator (run with '?' for options list)";  // "You wouldn't like me when I'm angry."
+        const char HelpRequestChar = '?';
 
-        // INPUTS
+        const Int32 MinimumContourHeights = 5;
+
+        // DEFAULTS
+        const String DefaultOutputFileSuffix = "_topo";
+        const int DefaultContourHeights = 200;
+        const OutputModeType DefaultOutputMode = OutputModeType.Normal;
+
+        // OPTIONS
+        // supported options
+        static Dictionary< OptionType, OptionSpecifier > optionTypeToSpecDict;
+
+        // maps output modes onto their specifiers
+        static Dictionary< OutputModeType, OptionSpecifier > outputModeToSpecifierDict;
+
         static String inputFileBaseName = "";
         static String outputFileName = "";
 
         static bool helpRequested = false;
 
-        static String parseError = "";
+        static OutputModeType outputMode = DefaultOutputMode;
 
-        // if true, produce grayscale image instead of contours
-        static  Boolean grayScale = false;
+        static Int32 contourHeights = DefaultContourHeights;
 
-        // if true, produce alternatingly colored contours
-        static Boolean alternatingColorContours = false;
-
-        // if true, will discover min/max heights in data and report to console
-        static Boolean reportMinMaxHeights = false;
-
-        // ---- timings ----
         static  Boolean reportTimings = false;
 
+        static String parseErrorMessage = "";
+
+        // ---- parse delegates ----
+        // ------------------------------------------------------
+        static private Boolean ParseOutputFile( String input, ref String parseErrorString )
+        {
+            Boolean parsed = false;
+
+            if ( input.Length > 0 )
+            {
+                outputFileName = input;
+                parsed = true;
+            }
+            else
+            {
+                parsed = false;
+                parseErrorString = "Output file name was empty";
+            }
+
+            return parsed;
+        }
+
+        // ------------------------------------------------------
+        static private Boolean ParseContourHeights( String input, ref String parseErrorString )
+        {
+            Boolean parsed = false;
+
+            parsed = Int32.TryParse( input, out contourHeights );
+
+            if ( false == parsed )
+            {
+                parseErrorString = "Specified contour height '" + input + "' could not be converted to a number.";
+            }
+            else
+            {
+                if ( contourHeights < MinimumContourHeights )
+                {
+                    parsed = false;
+                    parseErrorMessage = "Minimum allowed contour height is " + MinimumContourHeights;
+                }
+            }
+
+            return parsed;
+        }
+
+        // ------------------------------------------------------
+        static private Boolean ParseMode( String input, ref String parseErrorString )
+        {
+            Boolean parsed = false;
+
+            foreach ( KeyValuePair< OutputModeType, OptionSpecifier > currentModeSpec in outputModeToSpecifierDict )
+            {
+                if ( input.Equals( currentModeSpec.Value.Specifier ) )
+                {
+                    outputMode = currentModeSpec.Key;
+                    parsed = true;
+                }
+            }
+
+            if ( false == parsed )
+            {
+                parseErrorString = "Specified mode '" + input + "' not recognized.";
+            }
+
+            return parsed;
+        }
+
+        // ------------------------------------------------
+        static private Boolean ParseReportTimings( String input, ref String parseErrorString )
+        {
+            reportTimings = true;   // if option is used, it's turned on
+            return true;
+        }
+
+        // ------------------------------------------------
+        static private Boolean ParseHelpRequest(String input, ref String parseErrorString)
+        {
+            helpRequested = true;   // if option is used, it's turned on
+            return true;
+        }
+
+        // ---- static constructor ----
+        static public void InitOptionSpecifiers()
+        {
+            outputModeToSpecifierDict = new Dictionary< OutputModeType, OptionSpecifier>( Enum.GetNames(typeof(OutputModeType)).Length );
+
+            // not crazy about these casts, will see how it works in practice
+            // TODO : more descriptive help text?
+            outputModeToSpecifierDict.Add( OutputModeType.Normal,        new OptionSpecifier {  Specifier = ((char)OutputModeType.Normal).ToString(),      
+                                                                                                Description = "Normal",
+                                                                                                HelpText = "Normal contour map" });
+            outputModeToSpecifierDict.Add( OutputModeType.Gradient,      new OptionSpecifier {  Specifier = ((char)OutputModeType.Gradient).ToString(),    
+                                                                                                Description = "Gradient",
+                                                                                                HelpText = "Gradient" });
+            outputModeToSpecifierDict.Add( OutputModeType.Alternating,   new OptionSpecifier {  Specifier = ((char)OutputModeType.Alternating).ToString(), 
+                                                                                                Description = "Alternating",
+                                                                                                HelpText = "Alternating colored contour lines" } );
+
+            optionTypeToSpecDict = new Dictionary< OptionType, OptionSpecifier>( Enum.GetNames(typeof(OptionType)).Length );
+
+            optionTypeToSpecDict.Add( OptionType.HelpRequest,   new OptionSpecifier{    Specifier = HelpRequestChar.ToString(), 
+                                                                                        Description = "Help (list available options)",
+                                                                                        HelpText = ": print all available parameters",
+                                                                                        ParseDelegate = ParseHelpRequest } );
+            optionTypeToSpecDict.Add( OptionType.ReportTimings, new OptionSpecifier{    Specifier = "t", 
+                                                                                        Description = "Report Timings",
+                                                                                        HelpText = ": report Timings",
+                                                                                        ParseDelegate = ParseReportTimings });
+                                                                                        
+            optionTypeToSpecDict.Add( OptionType.Mode,          new OptionSpecifier{    Specifier = "m", 
+                                                                                        Description = "Output mode",
+                                                                                        HelpText = "<M>: mode (type of output)", 
+                                                                                        AllowedValues = outputModeToSpecifierDict.Values.ToList<OptionSpecifier>(), 
+                                                                                        ParseDelegate = ParseMode });
+            optionTypeToSpecDict.Add( OptionType.OutputFile,    new OptionSpecifier{    Specifier = "o", 
+                                                                                        Description = "Output file",
+                                                                                        HelpText = "<OutputFile>: specifies output image file",
+                                                                                        ParseDelegate = ParseOutputFile });
+            optionTypeToSpecDict.Add( OptionType.ContourHeights,new OptionSpecifier{    Specifier = "c", 
+                                                                                        Description = "Contour heights",
+                                                                                        HelpText = "<NNN>: Contour height separation (every NNN units), Minimum allowed value : " + MinimumContourHeights,
+                                                                                        ParseDelegate = ParseContourHeights } );
+        }
+
+        // --------------------------------------------------------------------------------------
+        static void ListAvailableOptions()
+        {
+            // ugh, probably a friendlier way to do this
+            const String indent = "   ";
+            const String indent2 = indent + indent;
+            const String indent3 = indent2 + indent;
+            const String indent4 = indent2 + indent2;
+
+            Console.WriteLine( ConsoleSectionSeparator );
+            Console.WriteLine( "Options:" );
+            Console.WriteLine( indent + "Required:" );
+            Console.WriteLine( indent2 + "InputFile : (no prefix dash) Name of input file (without extension, there must be both an FLT and HDR data file with this name)" );
+
+            Console.WriteLine( indent + "Optional:" );
+            foreach ( var currentOptionSpec in optionTypeToSpecDict.Values )
+            {
+                // Note : hardwiring the dash in front of these optional parameters
+                // also note that description string immediately follows specifier
+                String currentParamString = indent2 + "-" + currentOptionSpec.Specifier + currentOptionSpec.HelpText;
+
+                Console.WriteLine(currentParamString);
+
+                if ( null != currentOptionSpec.AllowedValues )
+                {
+                    Console.WriteLine( indent3 + "Options : " );
+                    foreach ( var currentAllowedValueSpec in currentOptionSpec.AllowedValues )
+                    {
+                        String currentAllowedValueString  = indent4 + currentAllowedValueSpec.Specifier + " : " + currentAllowedValueSpec.HelpText;
+                        Console.WriteLine( currentAllowedValueString );
+                    }
+                }
+            }
+        }
+
         // -------------------------------------------------------------------------------------
-        // needs : error reporting
         static Boolean ParseArgs(string[] args)
         {
             Boolean parsed = true;
 
-            if (args.Length > 0)
+            if ( 0 == args.Length )
             {
-                // note : quit upon failure
-                for (int argIndex = 0; (argIndex < args.Length) && parsed; ++argIndex)
+                parseErrorMessage = noInputsErrorMessage;
+                helpRequested = true;
+                parsed = false;
+            }
+            else
+            {
+                foreach ( string currentArg in args )
                 {
-                    if ('-' == args[argIndex].ElementAt(0))
+                    if ( '-' == currentArg.ElementAt(0))
                     {
-                        switch (args[argIndex].ElementAt(1))
+                        String currentOptionString = currentArg.Substring(1); // skip dash
+                        Boolean matched = false;
+
+                        // try to match an option specifier
+                        foreach ( var currentOptionSpec in optionTypeToSpecDict.Values )
                         {
-                            case 'o':  // -o : name of output file
-                                outputFileName = args[argIndex].Substring(2);
-                                break;
-                            case 'c': // -c : contour heights
-                                {
-                                    String  contourHeightsString = args[ argIndex ].Substring(2);
-                                    if (false == int.TryParse(contourHeightsString, out contourHeights))
-                                    {
-                                        parseError = "Could not parse " + contourHeightsString + " as a floating point value.";
-                                        parsed = false;
-                                    }
-                                }
-                                break;
-                            case 'g' :
-                                grayScale = true;
-                                break;
-                            case 't' :
-                                reportTimings = true;
-                                break;
-                            case 'a' :
-                                alternatingColorContours = true;
-                                break;
-                            case 'm' :
-                                reportMinMaxHeights = true;
-                                break;
-                            case '?' :
-                                helpRequested = true;
-                                parsed = false;
-                                break;
-                        }   // end switch
-                    }
-                    else
-                    {
-                        // no dash 
-                        // requesting help?
-                        if ('?' == args[argIndex].ElementAt(0))
+                            if (currentOptionString.StartsWith(currentOptionSpec.Specifier))
+                            {
+                                matched = true;
+
+                                // skip specifier string
+                                currentOptionString = currentOptionString.Substring( currentOptionSpec.Specifier.Length );
+
+                                parsed = currentOptionSpec.ParseDelegate( currentOptionString, ref parseErrorMessage );
+                            }
+
+                            if ( matched )
+                            {
+                                break; 
+                            }
+                        }   // end foreach option spec
+
+                        // detect invalid options
+                        if ( false == matched )
                         {
+                            parseErrorMessage = "Unrecognized option : " + currentArg;
                             parsed = false;
+                        }
+                    }
+                    else // no dash
+                    {
+                        // I'll specifically support no dash on ye olde help request
+                        // requesting help?
+                        if ( HelpRequestChar == currentArg.ElementAt(0))
+                        {
                             helpRequested = true;
                         }
                         else
                         {
                             // input file name (we think/hope)
-                            inputFileBaseName = args[argIndex];
+                            inputFileBaseName = currentArg;
                         }
+                    }   // end else
+
+                    // if current parse failed get out
+                    if ( false == parsed )
+                    {
+                        break;
                     }
                 }
             }
-            else
+
+            // must specify input file
+            if ( 0 == inputFileBaseName.Length )
             {
-                parseError = noInputsErrorMessage;
+                parseErrorMessage = noInputFileSpecifiedErrorMessage;
                 parsed = false;
             }
 
-            if ( "" == inputFileBaseName )
+            // default output file name to input file name plus something extra
+            if ( 0 == outputFileName.Length )
             {
-                parseError = noInputFileSpecifiedErrorMessage;
-                parsed = false;
+                outputFileName = inputFileBaseName + DefaultOutputFileSuffix;
             }
 
             return parsed;
         }
 
         // -------------------------------------------------------------------------------------
-        static void ListArguments()
+        static public void ReportOptionValues()
         {
-            Console.WriteLine( "Program arguments:" );
-            Console.WriteLine( "   Required:" );
-            Console.WriteLine( "      InputFile : (no prefix dash) Name of input file (without extension, there must be both an FLT and HDR data file with this name)" );
-            Console.WriteLine( "   Optional:" );
-            Console.WriteLine( "      -? or ? : view available arguments" );
-            Console.WriteLine( "      -cNNN : use height division NNN for contour lines (defaults to " + DEFAULT_CONTOUR_HEIGHTS + ")" );
-            Console.WriteLine( "      -oMyOutputFile : Sends output to file 'MyOutputFile.bmp'" );
-            Console.WriteLine( "      -a : odd/even contours rendered in different colors" );
-            Console.WriteLine( "      -g : creates grayscale bmp, black and white are lowest and highest values in height data, respectively." );
-            Console.WriteLine( "      -m : discovers min/max heights in data, reports to console" );
-            Console.WriteLine( "      -t : report on timing of operations" );
+            Console.WriteLine(ConsoleSectionSeparator);
+
+            // TODO : automate?
+            Console.WriteLine("Input file base name : " + inputFileBaseName);
+            Console.WriteLine(optionTypeToSpecDict[OptionType.OutputFile].Description + " : " + outputFileName);
+            Console.WriteLine(optionTypeToSpecDict[OptionType.Mode].Description + " : " + outputModeToSpecifierDict[outputMode].Description);
+            Console.WriteLine(optionTypeToSpecDict[OptionType.ContourHeights].Description + " : " + contourHeights);
+            Console.WriteLine(optionTypeToSpecDict[OptionType.ReportTimings].Description + " : " + (reportTimings ? "yes" : "no"));
         }
 
+        // TODO : move to where they should live
         static  int lowRed = 85;
         static  int lowGreen = 85;
         static  int lowBlue = 85;
@@ -367,7 +587,7 @@ namespace FLTTopoContour
 
             // Hmmm, looks like these loops leave row 0 of the bitmap blank. The parallel has to start at row 1
             // because the inner func uses the row-1, so need to brute force row 0 or something.
-            if ( alternatingColorContours )
+            if ( OutputModeType.Alternating == outputMode )
             {
                 Parallel.For( 1, topoData.NumRows(), row =>
                 {
@@ -434,42 +654,55 @@ namespace FLTTopoContour
         }
 
         // -------------------------------------------------------------------------------------------------------------------
+        // -------------------------------------------------------------------------------------------------------------------
         static void Main(string[] args)
         {
+            // ----- startup -----
+            InitOptionSpecifiers();
+
             FLTDataLib.FLTTopoData topoData = new FLTDataLib.FLTTopoData();
 
             System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
             long    lastOperationTimingMS = 0;
 
-            System.Console.WriteLine("- - - - - - - - - - -");
-            System.Console.WriteLine("FLT Topo Data Contour Generator (run with '?' for available arguments)");
+            System.Console.WriteLine();
+            System.Console.WriteLine( BannerMessage );
+            System.Console.WriteLine( "Version : " + versionNumber.ToString() );
 
+            // ----- parse program arguments -----
+#if true
             Boolean parsed = ParseArgs(args);
+#else
+            // testing
+            string[] testArgs = new string[2];
+            testArgs[0] = "inputTsetFile";
+            testArgs[1] = "-mn";
+            Boolean parsed = ParseArgs( testArgs );
+#endif
 
-            if (parsed)
+            if ( false == parsed )
             {
-                // if no output file name was specified, create one
-                if ( "" == outputFileName )
+                System.Console.WriteLine();
+                System.Console.WriteLine("Error : " + parseErrorMessage);
+
+                if ( helpRequested )
                 {
-                    outputFileName = inputFileBaseName + "-Contour";
+                    ListAvailableOptions();
+                }
+            }
+            else // args parsed successfully
+            {
+                if (helpRequested)
+                {
+                    ListAvailableOptions();
                 }
 
-                System.Console.WriteLine("Input files name : " + inputFileBaseName);
-                System.Console.WriteLine("Output file name : " + outputFileName );
-                System.Console.WriteLine("Contour heights  : " + contourHeights);
-                if (grayScale)
-                {
-                    System.Console.WriteLine( "Outputting grayscale image." );
-                }
-                if ( alternatingColorContours )
-                {
-                    System.Console.WriteLine( "Alternating colors for odd/even contours." );
-                }
-                if ( reportMinMaxHeights )
-                {
-                    System.Console.WriteLine( "Reporting min/max heights of data." );
-                }
-                System.Console.WriteLine( "- - - - - - - - - - -" );
+                // report current options
+                ReportOptionValues();
+
+                // TODO : break into operations
+
+                System.Console.WriteLine( ConsoleSectionSeparator );
 
                 // ---- read data ----
                 try
@@ -481,14 +714,17 @@ namespace FLTTopoContour
 
                     stopwatch.Stop();
                 }
-                catch (System.IO.FileNotFoundException e)  {
-                                    Console.WriteLine( "-- ERROR --" );
-                                    Console.WriteLine( e.Message );
-                                    Console.WriteLine( "\nAn .hdr and .flt data file must exist in the current directory." );
-                                    return; //throw; 
-                                    }
-                catch {
-                        throw;
+                catch (System.IO.FileNotFoundException e)  
+                {
+                    Console.WriteLine();
+                    Console.WriteLine( "Error:" );
+                    Console.WriteLine( e.Message );
+                    Console.WriteLine( "\nAn .hdr and .flt data file must exist in the current directory." );
+                    return; //throw; 
+                }
+                catch 
+                {
+                    throw;
                 }
 
 
@@ -498,27 +734,7 @@ namespace FLTTopoContour
                     System.Console.WriteLine("Data read took " + (lastOperationTimingMS / 1000.0f) + " seconds.");
                 }
 
-                System.Console.WriteLine("- - - - - - - - - - -");
-
-                // ---- report min max height ----
-                if ( reportMinMaxHeights )
-                {
-                    System.Console.WriteLine( "Finding min/max heights..." );
-                    stopwatch.Reset();
-                    stopwatch.Start();
-
-                    topoData.FindMinMax();
-                    System.Console.WriteLine( "Minimum height found : " + topoData.MinimumElevation );
-                    System.Console.WriteLine( "Maximum height found : " + topoData.MaximumElevation );
-
-                    lastOperationTimingMS = stopwatch.ElapsedMilliseconds;
-                    if (reportTimings)
-                    {
-                        System.Console.WriteLine("Min/Max discovery took " + (lastOperationTimingMS / 1000.0f) + " seconds.");
-                    }
-
-                    System.Console.WriteLine("- - - - - - - - - - -");
-                }   // end if reportMinMaxHeights
+                System.Console.WriteLine( ConsoleSectionSeparator );
 
                 // ---- quantize data ----
                 if ( contourHeights > 1 )
@@ -539,8 +755,8 @@ namespace FLTTopoContour
                 }
 
                 // ---- produce output file ----
-                System.Console.WriteLine("- - - - - - - - - - -");
-                if (grayScale)
+                System.Console.WriteLine( ConsoleSectionSeparator );
+                if ( OutputModeType.Gradient == outputMode )
                 {
                     System.Console.WriteLine( "Creating grayscale bitmap." );
 
@@ -576,24 +792,8 @@ namespace FLTTopoContour
 
                 }
             }
-            else
-            {
-                if ( helpRequested )
-                {
-                    ListArguments();
-                }
-                else
-                {
-                    System.Console.WriteLine("Input error : " + parseError);
 
-                    if ( noInputsErrorMessage == parseError )
-                    {
-                        ListArguments();
-                    }
-                }
-            }
-
-            System.Console.WriteLine("- - - - - - - - - - -\n");
+            System.Console.WriteLine();
         }
     }
 }

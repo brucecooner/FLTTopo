@@ -1,0 +1,61 @@
+So you want to use FLTTopoContour, but you need some digital elevation data to feed it. It accepts the HDR (header) and FLT (float)
+grid files downloaded from the USGS National Map Viewer.
+
+
+1. Direct your browser to : http://viewer.nationalmap.gov/viewer/
+This is where you can view elevation data compiled by the United States Geological Service. 
+
+2. Find your area of interest. It is similar to using Google Maps.
+
+3. In the icon menu bar above the map, find the Icon with the mouseover text that reads 'Download by Bounding Box'. 
+In the current version of the website, it's the second one from the right.
+
+4. Click drag to highlight an area. 
+
+5. When you are done dragging, a popup should appear with the title 'USGS Available Data for download'
+This will list the available data types for the region you selected.
+
+6. Select the checkbox for 'Elevation DEM Products' and click the Next button in the lower right corner of the popup.
+
+7. The next screen will show you available datasets for the type of data you have requested.
+Select the checkbox for the dataset that says '1/3 arc second' in the 'Resolution' column, and 'GridFloat' in the 'Format' column.
+FLTTopoContour will work with 1 arcsecond resolution data, but the lower resolution will lead to less accurate output.
+When you have found and checked the box for the dataset, select the 'Next' button at the lower right corner of the popup.
+
+8. A 'Cart' popup should slide onto the screen. Here you review your selected datasets. 
+Verify you are getting the 'GridFloat' datset. If you click on it you should see its area outline on the map. 
+The dataset you get will not be the exact area you selected. The service will send you a tile of their data that covers your selection.
+After you click on the dataset, there should be a link at the bottom of the 'Cart' popup with says 'Download selected product'.
+Click the link and verify you want to download the data.
+Note : The dataset may be a very large file.
+
+9. The downloaded dataset will be in a .zip file. Extract this file to a working directory.
+
+
+10. There will be numerous files included with the dataset. You are interested in the files that have extensions of HDR and FLT.
+The HDR file is a header that describes aspects of the elevation data in the FLT file needed to load and interpret it.
+The files will have the same name, which begins with 'float...', followed by the longitude and latitude coordinates of the data.
+
+11. Run FLTTopoContour with the name of the 'float...' file WITHOUT an extension. 
+The default output will be a contour map of the entire downloaded region in .bmp format (32 bit pixel depth).
+Depending on your CPU, this may take some time. (for reference, my Core I7 @ 3.4 GHz is producing the maps in <10 seconds)
+
+Notes:
+
+-By default FLTTopoContour will produce a normal contour map, but there are numerous options which may be changed.
+Run FLTTopoContour without any command line parameters for a list of available options.
+There is an option to output a 'gradient' map, which is a filled map with colors that change from low elevations to high ones.
+There is also an option to output an 'alternating' map, on which the contours alternate in color for physical 3-d projects 
+(print the output image twice, cutting a single color set of contours on each map, then interleave the two, using the colors to 
+precisely align the contour regions)
+
+-All of the elevation data I have received has been 10812x10812 sample points in size. 
+FLTTopoContour does NOT resize or process the output image in any way, but any standard image processing software that can
+read .bmp images will allow you to manipulate/scale/process/convert the output.
+There is an option that directs FLTTopoContour to output only an inset area of the original data. 
+The inset area is, however, specified in coordinates within the data set which you won't be able to know until you view the 
+full size image. Once you know the inset area's upper left and lower right coordinates, however, you can then direct 
+FLTTopoContour to output only that area which will reduce processing time and ease working with future output images.
+
+
+

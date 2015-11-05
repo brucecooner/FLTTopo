@@ -216,6 +216,63 @@ namespace FLTDataLib
         public  int MinElevationCol { get; private set; }
 
         // -------------------------------------------------------------------------------------------
+        // returns minimum and maximum elevation values in specified rect
+        // note : out of order coordinates will be reversed
+        public void FindMinMaxInRect(int x1, int y1, int x2, int y2, ref float min, ref float max )
+        {
+            // validation urrrrrrgh
+            if (!IsInitialized())
+            {
+                throw new Exception( "Topo data has not been initialized." );
+            }
+
+            if (        ( x1 < 0 ) ||  ( x1 >= NumCols() )
+                    ||  ( x2 < 0 ) ||  ( x2 >= NumCols() )
+                    ||  ( y1 < 0 ) || ( y1 >= NumRows() )
+                    ||  ( y2 < 0 ) || ( y2 >= NumRows() ) )
+            {
+                throw new ArgumentOutOfRangeException( "A coordinate (" + x1 +","+ y1 +"," + x2+"," + y2+") was outside the bounds of the topo map dimensions (0,0," + NumCols()+","+NumRows()+")" );
+            }
+
+            //reverse needed?
+            if ( x1 > x2 )
+            {
+                int temp = x1;
+                x1 = x2;
+                x2 = temp;
+            }
+            if ( y2 < y1 )
+            {
+                int temp = y1;
+                y1 = y2;
+                y2 = temp;
+            }
+
+            max = float.MinValue;
+            min = float.MaxValue;
+
+            for (int currentRow = y1; currentRow <= y2; ++currentRow)
+            {
+                for (int currentColumn = x1; currentColumn <= x2; ++currentColumn)
+                {
+                    int startIndex = FLTDataLib.Constants.FLT_FLOAT_SIZE * ((currentRow * Descriptor.NumberOfColumns) + currentColumn);
+
+                    float currentValue = System.BitConverter.ToSingle(topoDataByteArray, startIndex);
+
+                    if ( currentValue > max )
+                    {
+                        max = currentValue;
+                    }
+
+                    if (currentValue < min)
+                    {
+                        min = currentValue;
+                    }
+                }
+            }
+        }
+
+        // -------------------------------------------------------------------------------------------
         public void FindMinMax()
         {
             if (IsInitialized())
@@ -250,6 +307,10 @@ namespace FLTDataLib
                 }
 
                 MinMaxFound = true;
+            }
+            else
+            {
+                throw new Exception( "topo data not yet initialized" );
             }
         }
 
@@ -294,9 +355,9 @@ namespace FLTDataLib
 
                     float   currentValue = System.BitConverter.ToSingle( topoDataByteArray, dataIndex );
 
-                    currentValue -= ( currentValue % quantizeStep );
+                    float currentQuantizedValue = currentValue - ( currentValue % quantizeStep );
 
-                    byte[] floatBytes = System.BitConverter.GetBytes( currentValue );
+                    byte[] floatBytes = System.BitConverter.GetBytes( currentQuantizedValue );
 
                     Array.Copy(floatBytes, 0, topoDataByteArray, dataIndex, sizeof(float));
                 }

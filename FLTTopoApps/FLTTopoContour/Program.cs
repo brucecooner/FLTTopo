@@ -31,16 +31,16 @@ using FLTDataLib;
  *  TODO :
  *  -file overwrite confirmation
     -'slice' mode
-    -subgrid processing
     -config file?
- *  -suppress output?
+    -suppress output option?
+    -is my capitalization all over the place?
  * */
 
 namespace FLTTopoContour
 {
     class Program
     {
-        const float versionNumber = 1.1f;
+        const float versionNumber = 1.2f;
 
         // TYPES
         // different options the user specifies
@@ -56,7 +56,8 @@ namespace FLTTopoContour
             AlternatingColor1,  // color of half the lines in alternating mode
             AlternatingColor2,  // color of other half of lines in alternating mode
             GradientLoColor,    // color at lowest point in gradient mode
-            GradientHiColor     // color at highest point in gradient mode
+            GradientHiColor,    // color at highest point in gradient mode
+            Rect                // specifies rectangle within topo data to process/output
         };
 
         // different types of contour maps the app can produce
@@ -71,9 +72,9 @@ namespace FLTTopoContour
 
         class OptionSpecifier
         {
-            public String   Specifier;          // string that triggers option
+            public String   Specifier;          // string, entered in arguments, that denotes option
             public String   HelpText;           // shown in help mode
-            public String   Description;        // used when reporting option
+            public String   Description;        // used when reporting option values
 
             public ParseOptionDelegate ParseDelegate;   // used to translate input text to option value
 
@@ -98,8 +99,12 @@ namespace FLTTopoContour
         const String BannerMessage = "FLT Topo Data Contour Generator (run with '?' for options list)";  // "You wouldn't like me when I'm angry."
         const char HelpRequestChar = '?';
         const String ColorsHelpMessage = "Note : Colors are specified as a 'hex triplet' of the form RRGGBB\nwhere RR = red value, GG = green value, and BB = blue value.\nThe values are given in base-16.";
+        const String rectTopName = "top";
+        const String rectLeftName = "left";
+        const String rectRightName = "right";
+        const String rectBottomName = "bottom";
 
-        const Int32 MinimumContourHeights = 5;
+        const Int32 MinimumContourHeights = 1;
 
         // DEFAULTS
         const String DefaultOutputFileSuffix = "_topo";
@@ -163,6 +168,13 @@ namespace FLTTopoContour
         static String gradientLoColorString = DefaultGradientLoColorString;
         static Int32 gradientHiColor = DefaultGradientHiColor;
         static String gradientHiColorString = DefaultGradientHiColorString;
+
+        // output sub-rect (cannot apply immediate default, must wait until data loaded)
+        static Boolean rectSpecified = false;
+        static Int32 rectTop;
+        static Int32 rectLeft;
+        static Int32 rectRight;
+        static Int32 rectBottom;
 
         // ---- parse delegates ----
         // ------------------------------------------------------
@@ -359,6 +371,57 @@ namespace FLTTopoContour
             return true;
         }
 
+        static private Boolean ParseRectCoord( String str, String coordName, out Int32 coordinateValue, ref String parseErrorString )
+        {
+            Boolean parsed = false;
+
+            parsed = Int32.TryParse( str, out coordinateValue );
+
+            if ( !parsed )
+            {
+                parseErrorString = "could not get rect " + coordName + " coordinate from string '" + str + "'";
+            }
+
+            return parsed;
+        }
+
+        // --------------------------------------------------
+        static private Boolean ParseRect( String input, ref String parseErrorString )
+        {
+            Boolean parsed = false;
+
+            string[] coordinates = input.Split( ',' );
+
+            if ( 4 != coordinates.Length )
+            {
+                // TODO : test
+                parseErrorString = "Expected 4 coordinates, got " + coordinates.Length.ToString();
+                parsed = false;
+            }
+            else
+            {
+                // grrrr, this order has to be manually synced with help text string, me kind of annoyed by that...
+                parsed = ParseRectCoord( coordinates[0], rectLeftName, out rectLeft, ref parseErrorString );
+
+                if ( parsed )
+                {
+                    parsed = ParseRectCoord(coordinates[1], rectTopName, out rectTop, ref parseErrorString);
+                }
+                if (parsed)
+                {
+                    parsed = ParseRectCoord(coordinates[2], rectRightName, out rectRight, ref parseErrorString);
+                }
+                if (parsed)
+                {
+                    parsed = ParseRectCoord(coordinates[3], rectBottomName, out rectBottom, ref parseErrorString);
+                }
+
+                rectSpecified = parsed;
+            }
+
+            return parsed;
+        }
+
         // ---- static constructor ----
         static public void InitOptionSpecifiers()
         {
@@ -423,8 +486,11 @@ namespace FLTTopoContour
             optionTypeToSpecDict.Add(OptionType.GradientHiColor, new OptionSpecifier{   Specifier = "gradhicolor",
                                                                                         Description = "Gradient mode high point color",
                                                                                         HelpText = "<RRGGBB> color of highest points on map in gradient mode",
-                                                                                        ParseDelegate = ParseGradientHiColor
-            });
+                                                                                        ParseDelegate = ParseGradientHiColor });
+            optionTypeToSpecDict.Add(OptionType.Rect, new OptionSpecifier{              Specifier = "rect",
+                                                                                        Description = "Rectangle",
+                                                                                        HelpText = "<"+rectLeftName+","+rectTopName+","+rectRightName+","+rectBottomName+"> specifies grid within topo data to process and output",
+                                                                                        ParseDelegate = ParseRect });
 
         }
 
@@ -585,6 +651,85 @@ namespace FLTTopoContour
             {
                 Console.WriteLine(optionTypeToSpecDict[OptionType.GradientHiColor].Description + " : " + gradientHiColorString);
             }
+            if ( rectSpecified )
+            {
+                Console.WriteLine( "Left : " + rectLeft + ", Top : " + rectTop + ", Right : " + rectRight + ", Bottom : " + rectBottom );
+            }
+            else
+            {
+                Console.WriteLine( "No " + optionTypeToSpecDict[OptionType.Rect].Description + " specified." );
+            }
+        }
+
+        // ------------------------------------------------------------------------------------------------------------------
+        static Boolean ValidateCoord(Int32 Coord, Int32 LowerBound, Int32 UpperBound, String coordName, out String errorMessage )
+        {
+            Boolean valid = true;
+            errorMessage = "";
+
+            if (        ( Coord < LowerBound )
+                    ||  ( Coord > UpperBound ) )
+            {
+                valid = false;
+                errorMessage = coordName + " coordinate (" + Coord + ") out of bounds [" + LowerBound.ToString() + "..." + UpperBound.ToString() + "]";
+            }
+
+            return valid;
+        }
+
+        // ------------------------------------------------------------------------------------------------------------------
+        // validates specified rect falls within bounds of specified TopoData, kinda over detailed but eh I like useful error messages
+        // not too crazy about using the outer scope coordinate names in here though
+        static private Boolean ValidateRect( Int32 left, Int32 top, Int32 right, Int32 bottom, FLTTopoData topoData, out List<String> errorMessages )
+        {
+            errorMessages = new List<String>(4);
+            String tmpErrorMsg = "";
+
+            Boolean allInOrder = true;;
+
+            Boolean leftValid = ValidateCoord( top, 0, topoData.NumCols() - 1, rectLeftName, out tmpErrorMsg );
+            errorMessages.Add( tmpErrorMsg );
+
+            Boolean topValid = ValidateCoord( left, 0, topoData.NumRows() - 1, rectTopName, out tmpErrorMsg );
+            errorMessages.Add(tmpErrorMsg);
+
+            Boolean rightValid = ValidateCoord( right, 0, topoData.NumCols() - 1, rectRightName, out tmpErrorMsg );
+            errorMessages.Add(tmpErrorMsg);
+
+            Boolean bottomValid = ValidateCoord( bottom, 0, topoData.NumRows() - 1, rectBottomName, out tmpErrorMsg );
+            errorMessages.Add(tmpErrorMsg);
+
+            if ( rectLeft >= rectRight )
+            {
+                allInOrder = false;
+                errorMessages.Add( rectLeftName + " bound(" + rectLeft + ") must be less than " + rectRightName + " bound(" + rectRight + ")" );
+            }
+            if ( rectTop >= rectBottom )
+            {
+                allInOrder = false;
+                errorMessages.Add( rectTopName + " bound(" + rectTop + ") must be less than " + rectBottomName + " bound(" + rectBottom + ")" );
+            }
+
+            return topValid && leftValid && rightValid && bottomValid && allInOrder;
+        }
+
+        // ------------------------------------------------------------------------------------
+        // returns how many pixels will be in output image (does not account for pixel size)
+        static private int OutputImagePixelCount()
+        {
+            return ( rectRight - rectLeft + 1 ) * ( rectBottom - rectTop + 1 );
+        }
+
+        // --------------------------------------------------------------------------------
+        static private int OutputImageWidth()
+        {
+             return rectRight - rectLeft + 1;
+        }
+
+        // --------------------------------------------------------------------------------
+        static private int OutputImageHeight()
+        {
+            return rectBottom - rectTop + 1;
         }
 
         static  int lowRed;
@@ -609,6 +754,7 @@ namespace FLTTopoContour
         }
 
         // -------------------------------------------------------------------------------------------------------------------
+        // TODO : separate image type/creation/system specific code from color map/pixels creation
         static  void    TopoToGradientBitmap( FLTTopoData   topoData, String fileName )
         {
             // get gradient colors
@@ -623,36 +769,35 @@ namespace FLTTopoContour
             redRange = highRed - lowRed;
             greenRange = highGreen - lowGreen;
             blueRange = highBlue - lowBlue;
+                        
+            // note that this finds the min/max of the quantized data, so will not be the true heights, but that's important to accurately calculating
+            // the range
+            float minElevationInRect = 0;
+            float maxElevationInRect = 0;
+            topoData.FindMinMaxInRect( rectLeft, rectTop, rectRight, rectBottom, ref minElevationInRect, ref maxElevationInRect );
 
-            if ( false == topoData.MinMaxFound )
-            {
-                topoData.FindMinMax();
-            }
-
-            float range = topoData.MaximumElevation - topoData.MinimumElevation;
+            float range = maxElevationInRect - minElevationInRect; //topoData.MaximumElevation - topoData.MinimumElevation;
             float oneOverRange = 1.0f / range;
 
-            Bitmap bmp = new Bitmap(topoData.NumCols(), topoData.NumRows(), System.Drawing.Imaging.PixelFormat.Format32bppRgb);
+            Bitmap bmp = new Bitmap( OutputImageWidth(), OutputImageHeight(), System.Drawing.Imaging.PixelFormat.Format32bppRgb );
 
-            Int32[]     pixels = new Int32[ topoData.NumCols() * topoData.NumRows() ];
+            Int32[] pixels = new Int32[ OutputImagePixelCount() ];
 
             // generate grayscale bitmap from normalized topo data
+            // note : looping in TOPO MAP SPACE
             //for (int row = 0; row < topoData.NumRows(); ++row)
-            Parallel.For ( 0, topoData.NumRows(), row =>
+            Parallel.For ( rectTop, rectTop + OutputImageHeight() - 1, row =>      // I think the "to" here should be + 1 the upper bound, docs say it is Exclusive
             {
-                int offset = row * topoData.NumCols();
+                // compute offset of this row in OUTPUT IMAGE SPACE
+                int offset = (row - rectTop) * OutputImageWidth();
 
-                for (int col = 0; col < topoData.NumCols(); ++col)
+                //for (int col = 0; col < topoData.NumCols(); ++col)
+                for (int col = rectLeft; col <= rectRight; ++col)
                 {
-                    float normalizedValue = (topoData.ValueAt(row, col) - topoData.MinimumElevation) * oneOverRange;
+                    float normalizedValue = (topoData.ValueAt( row, col ) - minElevationInRect) * oneOverRange;
 
-                    //byte    pixelValue = (byte)(normalizedValue * 255.0f);
-                    // grayscale (for now)
-                    //Int32 argb = (Int32)(((byte)0xFF << 24) | (pixelValue << 16) | (pixelValue << 8) | pixelValue);
-
-                    //bmp.SetPixel(col, row, Color.FromArgb(argb));
-                    //pixels[ row * topoData.NumCols() + col ] = NormalizedHeightToColor( normalizedValue );// argb;
-                    pixels[ offset ] = NormalizedHeightToColor(normalizedValue);// argb;
+                    //bmp.SetPixel(col, row, Color.FromArgb(argb)); // seem to remember this being painfully slow
+                    pixels[ offset ] = NormalizedHeightToColor( normalizedValue );// argb;
                     ++offset;
                 }  
             //}   // end for row
@@ -670,7 +815,8 @@ namespace FLTTopoContour
 
                 //set the beginning of pixel data
                 //bmpData.Scan0 = pointer;
-                System.Runtime.InteropServices.Marshal.Copy(pixels, 0, bmpData.Scan0, topoData.NumCols() * topoData.NumRows());
+                //System.Runtime.InteropServices.Marshal.Copy(pixels, 0, bmpData.Scan0, topoData.NumCols() * topoData.NumRows());
+                System.Runtime.InteropServices.Marshal.Copy(pixels, 0, bmpData.Scan0, OutputImagePixelCount() );
 
                 //Unlock the pixels
                 bmp.UnlockBits(bmpData);
@@ -692,10 +838,7 @@ namespace FLTTopoContour
         static void TopoToContourBitmap(FLTTopoData topoData, String fileName )
         {
             //Create an empty Bitmap of the expected size
-            Bitmap contourMap = new Bitmap(topoData.NumCols(), topoData.NumRows(), System.Drawing.Imaging.PixelFormat.Format32bppRgb);
-
-            //Int32 redPixel = (Int32)(((byte)0xFF << 24) | (0xFF << 16) | (0x0 << 8) | 0x0);
-            //Int32 greenPixel = (Int32)(((byte)0xFF << 24) | (0x0 << 16) | (0xFF << 8) | 0x0);
+            Bitmap contourMap = new Bitmap( OutputImageWidth(), OutputImageHeight(), System.Drawing.Imaging.PixelFormat.Format32bppRgb);
 
 #if false
             // normal, slow way
@@ -717,7 +860,7 @@ namespace FLTTopoContour
             }
 #else
             // need to use byte array for pixels
-            Int32[]       pixels = new Int32[ topoData.NumRows() * topoData.NumCols() ];
+            Int32[]     pixels = new Int32[ OutputImagePixelCount() ];
 
             // ------------------------------
             // single pixel row computation (alternating color of odd/even contours)
@@ -725,11 +868,12 @@ namespace FLTTopoContour
             {
                 float leftValue = topoData.ValueAt(row, 0);
                 // index to first pixel in row
-                int currentPixelIndex = row * topoData.NumCols();
+                int currentPixelIndex = ( row - rectTop ) * OutputImageWidth();
 
                 Int32 currentPixel = backgroundColor;
 
-                for (int col = 0; col < topoData.NumCols(); ++col)
+                // note : looping in topo map space
+                for (int col = rectLeft; col <= rectRight; ++col)
                 {
                     float aboveValue = topoData.ValueAt(row - 1, col);
                     float currentValue = topoData.ValueAt(row, col);
@@ -780,13 +924,14 @@ namespace FLTTopoContour
             // single pixel row computation (all contours same color)
             Func<int, int>ComputePixelRowSingleColorContours = ( row ) =>
             {
-                float   leftValue = topoData.ValueAt( row, 0 );
-                // index to first pixel in row
-                int     currentPixelIndex = row * topoData.NumCols();
+                float   leftValue = topoData.ValueAt( row, rectLeft );
+
+                // index to first pixel in row (in image space)
+                int     currentPixelIndex = (row - rectTop) * OutputImageWidth();   
 
                 Int32   currentPixel = backgroundColor;
 
-                for ( int col = 0; col < topoData.NumCols(); ++col )
+                for ( int col = rectLeft; col <= rectRight; ++col ) // note : moving in topo space
                 {
                     float   aboveValue = topoData.ValueAt( row - 1, col );
                     float   currentValue = topoData.ValueAt( row, col );
@@ -805,18 +950,18 @@ namespace FLTTopoContour
             System.Console.WriteLine( "Computing pixel rows" );
 
 
-            // Hmmm, looks like these loops leave row 0 of the bitmap blank. The parallel has to start at row 1
-            // because the inner func uses the row-1, so need to brute force row 0 or something.
+            // TODO : sort out the '+1' on the start row. They're there because the compute functions acccess currentRow-1, so you cannot start
+            // at row zero. So most times row zero of the bitmap is blank. Can ignore the +1 if rectTop is >0, otherwise fill the bitmap row 0 or something.
             if ( OutputModeType.Alternating == outputMode )
             {
-                Parallel.For( 1, topoData.NumRows(), row =>
+                Parallel.For( rectTop + 1, rectBottom, row =>
                 {
                     ComputePixelRowAlternatingColorContours( row );
                 } );
             }
             else
             {
-                Parallel.For( 1, topoData.NumRows(), row =>
+                Parallel.For( rectTop + 1, rectBottom, row =>
                 {
                     ComputePixelRowSingleColorContours( row );
                 } );
@@ -852,11 +997,13 @@ namespace FLTTopoContour
 
                 //Lock all pixels
                 System.Drawing.Imaging.BitmapData bmpData = contourMap.LockBits(
-                           new Rectangle(0, 0, topoData.NumCols(), topoData.NumRows()),
+                           //new Rectangle(0, 0, topoData.NumCols(), topoData.NumRows()),
+                           new Rectangle( 0, 0, OutputImageWidth(), OutputImageHeight()),
                            System.Drawing.Imaging.ImageLockMode.WriteOnly, contourMap.PixelFormat);
 
                 // copy pixels into bitmap
-                System.Runtime.InteropServices.Marshal.Copy( pixels, 0, bmpData.Scan0, topoData.NumCols() * topoData.NumRows() );
+                //System.Runtime.InteropServices.Marshal.Copy( pixels, 0, bmpData.Scan0, topoData.NumCols() * topoData.NumRows() );
+                System.Runtime.InteropServices.Marshal.Copy( pixels, 0, bmpData.Scan0, OutputImageWidth() * OutputImageHeight() );
 
                 //Unlock the pixels
                 contourMap.UnlockBits(bmpData);
@@ -946,6 +1093,35 @@ namespace FLTTopoContour
                 }
 
                 System.Console.WriteLine( ConsoleSectionSeparator );
+
+                // ---- init/validate rect related fields ----
+                if ( rectSpecified )
+                {
+                    List<String> rectValidationErrorMessages;
+                    Boolean rectValid = ValidateRect( rectLeft, rectTop, rectRight, rectBottom, topoData, out rectValidationErrorMessages );
+
+                    if ( false == rectValid )
+                    {
+                        Console.WriteLine( "Error(s) in specified " + optionTypeToSpecDict[OptionType.Rect].Description + " bounds :" );
+                        foreach( String errorMessage in rectValidationErrorMessages )
+                        {
+                            if ( errorMessage.Length > 0 )
+                            {
+                                Console.WriteLine( " *" + errorMessage );
+                            }
+                        }
+                        return; // EXIT!
+                    }
+                }
+
+                if ( false == rectSpecified )
+                {
+                    // if user did not specify a rect, set bounds to whole topo
+                    rectLeft = 0;
+                    rectTop = 0;
+                    rectRight = topoData.NumCols() - 1;
+                    rectBottom = topoData.NumRows() - 1;
+                }
 
                 // ---- quantize data ----
                 if ( contourHeights > 1 )

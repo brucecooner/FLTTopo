@@ -30,17 +30,19 @@ using FLTDataLib;
 /*
  *  TODO :
  *  -file overwrite confirmation
-    -'slice' mode
+    -'slice' modes (horizontal and vertical)
     -config file?
     -suppress output option?
     -is my capitalization all over the place?
+    -add program note explaining that top must be < bottom, not greater, and why!
+    -return error codes from Main
  * */
 
 namespace FLTTopoContour
 {
     class Program
     {
-        const float versionNumber = 1.2f;
+        const float versionNumber = 1.3f;
 
         // TYPES
         // different options the user specifies
@@ -48,6 +50,7 @@ namespace FLTTopoContour
         {
             HelpRequest,        // list options
             ReportTimings,      // report how long various operations took
+            DataReportOnly,     // instead of outputting data, reports on details of topo data
             Mode,               // output topo map type
             OutputFile,         // name of output file
             ContourHeights,     // vertical distance between contours
@@ -57,7 +60,8 @@ namespace FLTTopoContour
             AlternatingColor2,  // color of other half of lines in alternating mode
             GradientLoColor,    // color at lowest point in gradient mode
             GradientHiColor,    // color at highest point in gradient mode
-            Rect                // specifies rectangle within topo data to process/output
+            RectIndices,        // specifies rectangle within topo data to process/output by indices into the grid of points
+            RectCoords          // specifies rectangle within topo data to process/output by (floating point) latitude and longitude coordinates 
         };
 
         // different types of contour maps the app can produce
@@ -90,7 +94,7 @@ namespace FLTTopoContour
             }
         };
 
-        // TODO : settle on a capitalization scheme here
+        // TODO : settle on a capitalization scheme here!!!
 
         // CONSTANTS
         const String noInputsErrorMessage = "No inputs.";
@@ -98,13 +102,22 @@ namespace FLTTopoContour
         const String ConsoleSectionSeparator = "- - - - - - - - - - -";
         const String BannerMessage = "FLT Topo Data Contour Generator (run with '?' for options list)";  // "You wouldn't like me when I'm angry."
         const char HelpRequestChar = '?';
-        const String ColorsHelpMessage = "Note : Colors are specified as a 'hex triplet' of the form RRGGBB\nwhere RR = red value, GG = green value, and BB = blue value.\nThe values are given in base-16.";
         const String rectTopName = "top";
         const String rectLeftName = "left";
         const String rectRightName = "right";
         const String rectBottomName = "bottom";
+        const String NorthString = "north";
+        const String EastString = "east";
+        const String SouthString = "south";
+        const String WestString = "west";
+        const char NorthChar = 'N';
+        const char EastChar = 'E';
+        const char SouthChar = 'S';
+        const char WestChar = 'W';
 
         const Int32 MinimumContourHeights = 1;
+
+        const float CoordinateNotSpecifiedValue = float.MaxValue;
 
         // DEFAULTS
         const String DefaultOutputFileSuffix = "_topo";
@@ -147,6 +160,8 @@ namespace FLTTopoContour
 
         static  Boolean reportTimings = false;
 
+        static Boolean dataReportOnly = false;
+
         static String parseErrorMessage = "";
 
         // background color (used in normal and alternating modes)
@@ -169,16 +184,25 @@ namespace FLTTopoContour
         static Int32 gradientHiColor = DefaultGradientHiColor;
         static String gradientHiColorString = DefaultGradientHiColorString;
 
+        static Boolean rectCoordinatesSpecified = false;
+        static float rectNorthLatitude;
+        static float rectWestLongitude;
+        static float rectSouthLatitude;
+        static float rectEastLongitude;
+
         // output sub-rect (cannot apply immediate default, must wait until data loaded)
-        static Boolean rectSpecified = false;
-        static Int32 rectTop;
-        static Int32 rectLeft;
-        static Int32 rectRight;
-        static Int32 rectBottom;
+        static Boolean rectIndicesSpecified = false;
+        static Int32 rectTopIndex;
+        static Int32 rectLeftIndex;
+        static Int32 rectRightIndex;
+        static Int32 rectBottomIndex;
+
+        // list of single line operating notes
+        static List<String> programNotes = null;
 
         // ---- parse delegates ----
         // ------------------------------------------------------
-        static private Boolean ParseOutputFile( String input, ref String parseErrorString )
+        static private Boolean parseOutputFile( String input, ref String parseErrorString )
         {
             Boolean parsed = false;
 
@@ -197,7 +221,7 @@ namespace FLTTopoContour
         }
 
         // ------------------------------------------------------
-        static private Boolean ParseContourHeights( String input, ref String parseErrorString )
+        static private Boolean parseContourHeights( String input, ref String parseErrorString )
         {
             Boolean parsed = false;
 
@@ -221,7 +245,7 @@ namespace FLTTopoContour
 
         // ------------------------------------------------------
         // converts hex triplet to 32 bit pixel (note : does NOT expect 0x prefix on string)
-        static private Int32 ParseColorHexTriplet( String input, ref Boolean parsed, ref String parseErrorString )
+        static private Int32 parseColorHexTriplet( String input, ref Boolean parsed, ref String parseErrorString )
         {
             parsed = true;
             Int32 colorValue = 0;
@@ -280,12 +304,12 @@ namespace FLTTopoContour
 
         // ------------------------------------------------------
         // generalized color parsing
-        static private Boolean ParseColor( String input, String colorDescription, ref String parseErrorString, ref Int32 colorOut, ref String colorStringOut )
+        static private Boolean parseColor( String input, String colorDescription, ref String parseErrorString, ref Int32 colorOut, ref String colorStringOut )
         {
             Boolean parsed = true;
 
             String parseError = "";
-            colorOut = ParseColorHexTriplet(input, ref parsed, ref parseError);
+            colorOut = parseColorHexTriplet(input, ref parsed, ref parseError);
 
             if (false == parsed)
             {
@@ -300,43 +324,43 @@ namespace FLTTopoContour
         }
 
         // ------------------------------------------------------
-        static private Boolean ParseBackgroundColor( String input, ref String parseErrorString )
+        static private Boolean parseBackgroundColor( String input, ref String parseErrorString )
         {
-            return ParseColor( input, optionTypeToSpecDict[ OptionType.BackgroundColor ].Description, ref parseErrorString, ref backgroundColor, ref backgroundColorString );
+            return parseColor( input, optionTypeToSpecDict[ OptionType.BackgroundColor ].Description, ref parseErrorString, ref backgroundColor, ref backgroundColorString );
         }
 
         // ------------------------------------------------------
-        static private Boolean ParseContourColor(String input, ref String parseErrorString)
+        static private Boolean parseContourColor(String input, ref String parseErrorString)
         {
-            return ParseColor( input, optionTypeToSpecDict[ OptionType.ContourColor ].Description, ref parseErrorString, ref contourColor, ref contourColorString );
+            return parseColor( input, optionTypeToSpecDict[ OptionType.ContourColor ].Description, ref parseErrorString, ref contourColor, ref contourColorString );
         }
 
         // ------------------------------------------------------
-        static private Boolean ParseAlternatingContourColor1( String input, ref String parseErrorString)
+        static private Boolean parseAlternatingContourColor1( String input, ref String parseErrorString)
         {
-            return ParseColor( input, optionTypeToSpecDict[ OptionType.AlternatingColor1 ].Description, ref parseErrorString, ref alternatingContourColor1, ref alternatingContourColor1String );
+            return parseColor( input, optionTypeToSpecDict[ OptionType.AlternatingColor1 ].Description, ref parseErrorString, ref alternatingContourColor1, ref alternatingContourColor1String );
         }
 
         // ------------------------------------------------------
-        static private Boolean ParseAlternatingContourColor2(String input, ref String parseErrorString)
+        static private Boolean parseAlternatingContourColor2(String input, ref String parseErrorString)
         {
-            return ParseColor( input, optionTypeToSpecDict[ OptionType.AlternatingColor2 ].Description, ref parseErrorString, ref alternatingContourColor2, ref alternatingContourColor2String );
+            return parseColor( input, optionTypeToSpecDict[ OptionType.AlternatingColor2 ].Description, ref parseErrorString, ref alternatingContourColor2, ref alternatingContourColor2String );
         }
 
         // ------------------------------------------------------
-        static private Boolean ParseGradientLoColor(String input, ref String parseErrorString)
+        static private Boolean parseGradientLoColor(String input, ref String parseErrorString)
         {
-            return ParseColor( input, optionTypeToSpecDict[ OptionType.GradientLoColor ].Description, ref parseErrorString, ref gradientLoColor, ref gradientLoColorString );
+            return parseColor( input, optionTypeToSpecDict[ OptionType.GradientLoColor ].Description, ref parseErrorString, ref gradientLoColor, ref gradientLoColorString );
         }
 
         // ---------------------------------------------------------
-        static private Boolean ParseGradientHiColor( String input, ref String parseErrorString )
+        static private Boolean parseGradientHiColor( String input, ref String parseErrorString )
         {
-            return ParseColor( input, optionTypeToSpecDict[ OptionType.GradientHiColor ].Description, ref parseErrorString, ref gradientHiColor, ref gradientHiColorString );
+            return parseColor( input, optionTypeToSpecDict[ OptionType.GradientHiColor ].Description, ref parseErrorString, ref gradientHiColor, ref gradientHiColorString );
         }
 
         // ------------------------------------------------------
-        static private Boolean ParseMode( String input, ref String parseErrorString )
+        static private Boolean parseMode( String input, ref String parseErrorString )
         {
             Boolean parsed = false;
 
@@ -358,20 +382,27 @@ namespace FLTTopoContour
         }
 
         // ------------------------------------------------
-        static private Boolean ParseReportTimings( String input, ref String parseErrorString )
+        static private Boolean parseReportTimings( String input, ref String parseErrorString )
         {
             reportTimings = true;   // if option is used, it's turned on
             return true;
         }
 
         // ------------------------------------------------
-        static private Boolean ParseHelpRequest(String input, ref String parseErrorString)
+        static private Boolean parseReportOnly( String input, ref String parseErrorString )
+        {
+            dataReportOnly = true;    // if option is given, it's on, nothing to parse
+            return true;
+        }
+
+        // ------------------------------------------------
+        static private Boolean parseHelpRequest(String input, ref String parseErrorString)
         {
             helpRequested = true;   // if option is used, it's turned on
             return true;
         }
 
-        static private Boolean ParseRectCoord( String str, String coordName, out Int32 coordinateValue, ref String parseErrorString )
+        static private Boolean parseRectIndex( String str, String coordName, out Int32 coordinateValue, ref String parseErrorString )
         {
             Boolean parsed = false;
 
@@ -379,14 +410,66 @@ namespace FLTTopoContour
 
             if ( !parsed )
             {
-                parseErrorString = "could not get rect " + coordName + " coordinate from string '" + str + "'";
+                parseErrorString = "could not get rect " + coordName + " index from string '" + str + "'";
             }
 
             return parsed;
         }
 
         // --------------------------------------------------
-        static private Boolean ParseRect( String input, ref String parseErrorString )
+        static private Boolean parseRectIndices( String input, ref String parseErrorString )
+        {
+            Boolean parsed = false;
+
+            string[] coordinates = input.Split( ',' );
+
+            if ( 4 != coordinates.Length )
+            {
+                // TODO : test
+                parseErrorString = "Expected 4 numbers, got " + coordinates.Length.ToString();
+                parsed = false;
+            }
+            else
+            {
+                // grrrr, this order has to be manually synced with help text string, me kind of annoyed by that...
+                // TODO : make constants or enum for coordinate index to side mapping
+                parsed = parseRectIndex( coordinates[0], rectTopName, out rectTopIndex, ref parseErrorString );
+
+                if ( parsed )
+                {
+                    parsed = parseRectIndex(coordinates[1], rectLeftName, out rectLeftIndex, ref parseErrorString);
+                }
+                if (parsed)
+                {
+                    parsed = parseRectIndex(coordinates[2], rectBottomName, out rectBottomIndex, ref parseErrorString);
+                }
+                if (parsed)
+                {
+                    parsed = parseRectIndex(coordinates[3], rectRightName, out rectRightIndex, ref parseErrorString);
+                }
+
+                rectIndicesSpecified = parsed;
+            }
+
+            return parsed;
+        }
+
+        // --------------------------------------------------
+        static private Boolean parseRectCoordinate(String str, String coordName, out float coordinateValue, ref String parseErrorString)
+        {
+            Boolean parsed = false;
+
+            parsed = float.TryParse(str, out coordinateValue);
+
+            if (!parsed)
+            {
+                parseErrorString = "could not get rect " + coordName + " coordinate from string '" + str + "'";
+            }
+
+            return parsed;
+        }
+
+        static private Boolean parseRectCoordinates(String input, ref String parseErrorString)
         {
             Boolean parsed = false;
 
@@ -401,29 +484,42 @@ namespace FLTTopoContour
             else
             {
                 // grrrr, this order has to be manually synced with help text string, me kind of annoyed by that...
-                parsed = ParseRectCoord( coordinates[0], rectLeftName, out rectLeft, ref parseErrorString );
+                parsed = parseRectCoordinate( coordinates[0], NorthString, out rectNorthLatitude, ref parseErrorString );
 
                 if ( parsed )
                 {
-                    parsed = ParseRectCoord(coordinates[1], rectTopName, out rectTop, ref parseErrorString);
+                    parsed = parseRectCoordinate(coordinates[1], WestString, out rectWestLongitude, ref parseErrorString);
                 }
                 if (parsed)
                 {
-                    parsed = ParseRectCoord(coordinates[2], rectRightName, out rectRight, ref parseErrorString);
+                    parsed = parseRectCoordinate(coordinates[2], SouthString, out rectSouthLatitude, ref parseErrorString);
                 }
                 if (parsed)
                 {
-                    parsed = ParseRectCoord(coordinates[3], rectBottomName, out rectBottom, ref parseErrorString);
+                    parsed = parseRectCoordinate(coordinates[3], EastString, out rectEastLongitude, ref parseErrorString);
                 }
 
-                rectSpecified = parsed;
+                rectCoordinatesSpecified = parsed;
             }
 
             return parsed;
         }
 
-        // ---- static constructor ----
-        static public void InitOptionSpecifiers()
+        // --------------------------------------------------------------------
+        static private void initProgramNotes()
+        {
+            if ( null == programNotes )
+            {
+                programNotes = new List<String>();
+
+                programNotes.Add( "Colors are specified as a 'hex triplet' of the form RRGGBB\nwhere RR = red value, GG = green value, and BB = blue value." );
+                programNotes.Add( "Color values are given in base-16, and range from 0-255." );
+                programNotes.Add( "If rects are specified in both indices and coordinates, the indices will be ignored." );
+            }
+        }
+
+        // -------------------------------------------------------------------- 
+        static private void initOptionSpecifiers()
         {
             outputModeToSpecifierDict = new Dictionary< OutputModeType, OptionSpecifier>( Enum.GetNames(typeof(OutputModeType)).Length );
 
@@ -444,61 +540,68 @@ namespace FLTTopoContour
             optionTypeToSpecDict.Add( OptionType.HelpRequest,   new OptionSpecifier{    Specifier = HelpRequestChar.ToString(), 
                                                                                         Description = "Help (list available options)",
                                                                                         HelpText = ": print all available parameters",
-                                                                                        ParseDelegate = ParseHelpRequest } );
+                                                                                        ParseDelegate = parseHelpRequest } );
+            optionTypeToSpecDict.Add( OptionType.DataReportOnly,new OptionSpecifier{    Specifier = "datareport",
+                                                                                        Description = "Report only",
+                                                                                        HelpText = ": Reports details of topo data only, no other output.",
+                                                                                        ParseDelegate = parseReportOnly });
             optionTypeToSpecDict.Add( OptionType.ReportTimings, new OptionSpecifier{    Specifier = "timings", 
                                                                                         Description = "Report Timings",
                                                                                         HelpText = ": report Timings",
-                                                                                        ParseDelegate = ParseReportTimings });
+                                                                                        ParseDelegate = parseReportTimings });
                                                                                         
             optionTypeToSpecDict.Add( OptionType.Mode,          new OptionSpecifier{    Specifier = "mode", 
                                                                                         Description = "Output mode",
                                                                                         HelpText = "<M>: mode (type of output)", 
                                                                                         AllowedValues = outputModeToSpecifierDict.Values.ToList<OptionSpecifier>(), 
-                                                                                        ParseDelegate = ParseMode });
+                                                                                        ParseDelegate = parseMode });
             optionTypeToSpecDict.Add( OptionType.OutputFile,    new OptionSpecifier{    Specifier = "outfile", 
                                                                                         Description = "Output file",
                                                                                         HelpText = "<OutputFile>: specifies output image file",
-                                                                                        ParseDelegate = ParseOutputFile });
-            optionTypeToSpecDict.Add( OptionType.ContourHeights,new OptionSpecifier{    Specifier = "cont", 
+                                                                                        ParseDelegate = parseOutputFile });
+            optionTypeToSpecDict.Add( OptionType.ContourHeights,new OptionSpecifier{    Specifier = "contours", 
                                                                                         Description = "Contour heights",
-                                                                                        HelpText = "<NNN>: Contour height separation (every NNN units), Minimum : " + MinimumContourHeights,
-                                                                                        ParseDelegate = ParseContourHeights } );
+                                                                                        HelpText = "<NNN>: Contour height separation (every NNN meters), Minimum : " + MinimumContourHeights,
+                                                                                        ParseDelegate = parseContourHeights } );
             optionTypeToSpecDict.Add(OptionType.BackgroundColor,new OptionSpecifier{    Specifier = "bgcolor",
                                                                                         Description = "Background color",
-                                                                                        HelpText = "<RRGGBB>: Background Color",
-                                                                                        ParseDelegate = ParseBackgroundColor });
+                                                                                        HelpText = "<RRGGBB>: Background Color (defaults to white)",
+                                                                                        ParseDelegate = parseBackgroundColor });
             optionTypeToSpecDict.Add(OptionType.ContourColor, new OptionSpecifier{     Specifier = "concolor",
                                                                                         Description = "Contour lines color",
                                                                                         HelpText = "<RRGGBB>: color of contour lines in normal mode",
-                                                                                        ParseDelegate = ParseContourColor });
+                                                                                        ParseDelegate = parseContourColor });
             optionTypeToSpecDict.Add(OptionType.AlternatingColor1, new OptionSpecifier{ Specifier = "altcolor1",
                                                                                         Description = "Alternating contour colors 1",
                                                                                         HelpText = "<RRGGBB>: color 1 in alternating mode",
-                                                                                        ParseDelegate = ParseAlternatingContourColor1 });
+                                                                                        ParseDelegate = parseAlternatingContourColor1 });
             optionTypeToSpecDict.Add(OptionType.AlternatingColor2, new OptionSpecifier{ Specifier = "altcolor2",
                                                                                         Description = "Alternating contour colors 2",
                                                                                         HelpText = "<RRGGBB>: color 2 in alternating mode",
-                                                                                        ParseDelegate = ParseAlternatingContourColor2 });
+                                                                                        ParseDelegate = parseAlternatingContourColor2 });
             optionTypeToSpecDict.Add(OptionType.GradientLoColor, new OptionSpecifier{   Specifier = "gradlocolor",
                                                                                         Description = "Gradient mode low point color",
                                                                                         HelpText = "<RRGGBB> color of lowest points on map in gradient mode",
-                                                                                        ParseDelegate = ParseGradientLoColor });
+                                                                                        ParseDelegate = parseGradientLoColor });
             optionTypeToSpecDict.Add(OptionType.GradientHiColor, new OptionSpecifier{   Specifier = "gradhicolor",
                                                                                         Description = "Gradient mode high point color",
                                                                                         HelpText = "<RRGGBB> color of highest points on map in gradient mode",
-                                                                                        ParseDelegate = ParseGradientHiColor });
-            optionTypeToSpecDict.Add(OptionType.Rect, new OptionSpecifier{              Specifier = "rect",
-                                                                                        Description = "Rectangle",
-                                                                                        HelpText = "<"+rectLeftName+","+rectTopName+","+rectRightName+","+rectBottomName+"> specifies grid within topo data to process and output",
-                                                                                        ParseDelegate = ParseRect });
-
+                                                                                        ParseDelegate = parseGradientHiColor });
+            optionTypeToSpecDict.Add(OptionType.RectIndices, new OptionSpecifier{              Specifier = "recttlbr",
+                                                                                        Description = "Rectangle Indices",
+                                                                                        HelpText = "<"+rectTopName+","+rectLeftName+","+rectBottomName+","+rectRightName+"> indices of grid within topo data to process and output",
+                                                                                        ParseDelegate = parseRectIndices });
+            optionTypeToSpecDict.Add(OptionType.RectCoords, new OptionSpecifier{        Specifier = "rectnwse",
+                                                                                        Description = "Rectangle Coordinates",
+                                                                                        HelpText = "<"+NorthString+","+WestString+","+SouthString+","+EastString+"> specifies grid by (floating point) lat/long values",
+                                                                                        ParseDelegate = parseRectCoordinates });
         }
 
         // --------------------------------------------------------------------------------------
-        static void ListAvailableOptions()
+        static private void reportAvailableOptions()
         {
-            // ugh, probably a friendlier way to do this
-            const String indent = "   ";
+            // aww, no string multiply like Python
+            const String indent = "  ";
             const String indent2 = indent + indent;
             const String indent3 = indent2 + indent;
             const String indent4 = indent2 + indent2;
@@ -527,11 +630,16 @@ namespace FLTTopoContour
                     }
                 }
             }
-            Console.WriteLine( ColorsHelpMessage );
+
+            Console.WriteLine( "Notes:" );
+            foreach ( var currentNote in programNotes )
+            {
+                Console.WriteLine( currentNote );
+            }
         }
 
         // -------------------------------------------------------------------------------------
-        static Boolean ParseArgs(string[] args)
+        static private Boolean parseArgs(string[] args)
         {
             Boolean parsed = true;
 
@@ -616,120 +724,91 @@ namespace FLTTopoContour
         }
 
         // -------------------------------------------------------------------------------------
-        static public void ReportOptionValues()
+        static private void reportOptionValues()
         {
             Console.WriteLine(ConsoleSectionSeparator);
 
             // TODO : automate?
             Console.WriteLine("Input file base name : " + inputFileBaseName);
-            Console.WriteLine(optionTypeToSpecDict[OptionType.OutputFile].Description + " : " + outputFileName);
-            Console.WriteLine(optionTypeToSpecDict[OptionType.Mode].Description + " : " + outputModeToSpecifierDict[outputMode].Description);
-            Console.WriteLine(optionTypeToSpecDict[OptionType.ContourHeights].Description + " : " + contourHeights);
-            Console.WriteLine(optionTypeToSpecDict[OptionType.ReportTimings].Description + " : " + (reportTimings ? "yes" : "no"));
-            // only report colors if changed from default
-            if ( backgroundColor != DefaultBackgroundColor )
+
+            if ( dataReportOnly )
             {
-                Console.WriteLine( optionTypeToSpecDict[OptionType.BackgroundColor].Description + " : " + backgroundColorString );
-            }
-            if ( contourColor != DefaultContourColor )
-            {
-                Console.WriteLine(optionTypeToSpecDict[OptionType.ContourColor].Description + " : " + contourColorString);
-            }
-            if ( alternatingContourColor1 != DefaultAlternatingColor1 )
-            {
-                Console.WriteLine(optionTypeToSpecDict[OptionType.AlternatingColor1].Description + " : " + alternatingContourColor1String);
-            }
-            if (alternatingContourColor2 != DefaultAlternatingColor2)
-            {
-                Console.WriteLine(optionTypeToSpecDict[OptionType.AlternatingColor2].Description + " : " + alternatingContourColor2String);
-            }
-            if (gradientLoColor != DefaultGradientLoColor)
-            {
-                Console.WriteLine(optionTypeToSpecDict[OptionType.GradientLoColor].Description + " : " + gradientLoColorString);
-            }
-            if (gradientHiColor != DefaultGradientHiColor)
-            {
-                Console.WriteLine(optionTypeToSpecDict[OptionType.GradientHiColor].Description + " : " + gradientHiColorString);
-            }
-            if ( rectSpecified )
-            {
-                Console.WriteLine( "Left : " + rectLeft + ", Top : " + rectTop + ", Right : " + rectRight + ", Bottom : " + rectBottom );
+                Console.WriteLine( "Data report only." );
             }
             else
             {
-                Console.WriteLine( "No " + optionTypeToSpecDict[OptionType.Rect].Description + " specified." );
+                Console.WriteLine(optionTypeToSpecDict[OptionType.OutputFile].Description + " : " + outputFileName);
+                Console.WriteLine(optionTypeToSpecDict[OptionType.Mode].Description + " : " + outputModeToSpecifierDict[outputMode].Description);
+                Console.WriteLine(optionTypeToSpecDict[OptionType.ContourHeights].Description + " : " + contourHeights);
+                Console.WriteLine(optionTypeToSpecDict[OptionType.ReportTimings].Description + " : " + (reportTimings ? "yes" : "no"));
+                // only report colors if changed from default
+                if ( backgroundColor != DefaultBackgroundColor )
+                {
+                    Console.WriteLine( optionTypeToSpecDict[OptionType.BackgroundColor].Description + " : " + backgroundColorString );
+                }
+                if ( contourColor != DefaultContourColor )
+                {
+                    Console.WriteLine(optionTypeToSpecDict[OptionType.ContourColor].Description + " : " + contourColorString);
+                }
+                if ( alternatingContourColor1 != DefaultAlternatingColor1 )
+                {
+                    Console.WriteLine(optionTypeToSpecDict[OptionType.AlternatingColor1].Description + " : " + alternatingContourColor1String);
+                }
+                if (alternatingContourColor2 != DefaultAlternatingColor2)
+                {
+                    Console.WriteLine(optionTypeToSpecDict[OptionType.AlternatingColor2].Description + " : " + alternatingContourColor2String);
+                }
+                if (gradientLoColor != DefaultGradientLoColor)
+                {
+                    Console.WriteLine(optionTypeToSpecDict[OptionType.GradientLoColor].Description + " : " + gradientLoColorString);
+                }
+                if (gradientHiColor != DefaultGradientHiColor)
+                {
+                    Console.WriteLine(optionTypeToSpecDict[OptionType.GradientHiColor].Description + " : " + gradientHiColorString);
+                }
+
+                if ( rectCoordinatesSpecified )
+                {
+                    // TODO : this assumes we're working in the western half of the northern hemisphere, need function to convert lat/long to nsew correctly.
+                    Console.WriteLine( "Rect Coordinates : " );
+                    Console.WriteLine( " " + WestString + ":" + rectWestLongitude + WestChar + ", " + NorthString + ":" + rectNorthLatitude + NorthChar );
+                    Console.WriteLine( " " + EastString + ":" + rectEastLongitude + WestChar + ", " + SouthString + ":" + rectSouthLatitude + NorthChar );
+                }
+
+                if ( rectIndicesSpecified )
+                {
+                    if ( rectCoordinatesSpecified )
+                    {
+                        Console.WriteLine("Rect indices ignored.");
+                    }
+                    else
+                    {
+                        Console.WriteLine( "Rect Indices : " );
+                        Console.WriteLine( "   Left:" + rectLeftIndex + ", Top:" + rectTopIndex + ", Right:" + rectRightIndex + ", Bottom:" + rectBottomIndex );
+                    }
+                }
             }
-        }
-
-        // ------------------------------------------------------------------------------------------------------------------
-        static Boolean ValidateCoord(Int32 Coord, Int32 LowerBound, Int32 UpperBound, String coordName, out String errorMessage )
-        {
-            Boolean valid = true;
-            errorMessage = "";
-
-            if (        ( Coord < LowerBound )
-                    ||  ( Coord > UpperBound ) )
-            {
-                valid = false;
-                errorMessage = coordName + " coordinate (" + Coord + ") out of bounds [" + LowerBound.ToString() + "..." + UpperBound.ToString() + "]";
-            }
-
-            return valid;
-        }
-
-        // ------------------------------------------------------------------------------------------------------------------
-        // validates specified rect falls within bounds of specified TopoData, kinda over detailed but eh I like useful error messages
-        // not too crazy about using the outer scope coordinate names in here though
-        static private Boolean ValidateRect( Int32 left, Int32 top, Int32 right, Int32 bottom, FLTTopoData topoData, out List<String> errorMessages )
-        {
-            errorMessages = new List<String>(4);
-            String tmpErrorMsg = "";
-
-            Boolean allInOrder = true;;
-
-            Boolean leftValid = ValidateCoord( top, 0, topoData.NumCols() - 1, rectLeftName, out tmpErrorMsg );
-            errorMessages.Add( tmpErrorMsg );
-
-            Boolean topValid = ValidateCoord( left, 0, topoData.NumRows() - 1, rectTopName, out tmpErrorMsg );
-            errorMessages.Add(tmpErrorMsg);
-
-            Boolean rightValid = ValidateCoord( right, 0, topoData.NumCols() - 1, rectRightName, out tmpErrorMsg );
-            errorMessages.Add(tmpErrorMsg);
-
-            Boolean bottomValid = ValidateCoord( bottom, 0, topoData.NumRows() - 1, rectBottomName, out tmpErrorMsg );
-            errorMessages.Add(tmpErrorMsg);
-
-            if ( rectLeft >= rectRight )
-            {
-                allInOrder = false;
-                errorMessages.Add( rectLeftName + " bound(" + rectLeft + ") must be less than " + rectRightName + " bound(" + rectRight + ")" );
-            }
-            if ( rectTop >= rectBottom )
-            {
-                allInOrder = false;
-                errorMessages.Add( rectTopName + " bound(" + rectTop + ") must be less than " + rectBottomName + " bound(" + rectBottom + ")" );
-            }
-
-            return topValid && leftValid && rightValid && bottomValid && allInOrder;
         }
 
         // ------------------------------------------------------------------------------------
         // returns how many pixels will be in output image (does not account for pixel size)
-        static private int OutputImagePixelCount()
+        static private int outputImagePixelCount()
         {
-            return ( rectRight - rectLeft + 1 ) * ( rectBottom - rectTop + 1 );
+            //int testsize = ( rectRightIndex - rectLeftIndex + 1 ) * ( rectBottomIndex - rectTopIndex + 1 );
+
+            return ( rectRightIndex - rectLeftIndex + 1 ) * ( rectBottomIndex - rectTopIndex + 1 );
         }
 
         // --------------------------------------------------------------------------------
-        static private int OutputImageWidth()
+        static private int outputImageWidth()
         {
-             return rectRight - rectLeft + 1;
+             return rectRightIndex - rectLeftIndex + 1;
         }
 
         // --------------------------------------------------------------------------------
-        static private int OutputImageHeight()
+        static private int outputImageHeight()
         {
-            return rectBottom - rectTop + 1;
+            return rectBottomIndex - rectTopIndex + 1;
         }
 
         static  int lowRed;
@@ -744,7 +823,7 @@ namespace FLTTopoContour
         static  int greenRange;
         static  int blueRange;
 
-        static  Int32     NormalizedHeightToColor( float height )
+        static  private Int32     normalizedHeightToColor( float height )
         {
             byte    redValue = (byte)(lowRed + ( height * redRange ) );
             byte    greenValue = (byte)(lowGreen + ( height * greenRange ) );
@@ -755,7 +834,7 @@ namespace FLTTopoContour
 
         // -------------------------------------------------------------------------------------------------------------------
         // TODO : separate image type/creation/system specific code from color map/pixels creation
-        static  void    TopoToGradientBitmap( FLTTopoData   topoData, String fileName )
+        static  private void    topoToGradientBitmap( FLTTopoData   topoData, String fileName )
         {
             // get gradient colors
             lowRed = (gradientLoColor >> 16) & 0xFF;
@@ -774,30 +853,30 @@ namespace FLTTopoContour
             // the range
             float minElevationInRect = 0;
             float maxElevationInRect = 0;
-            topoData.FindMinMaxInRect( rectLeft, rectTop, rectRight, rectBottom, ref minElevationInRect, ref maxElevationInRect );
+            topoData.FindMinMaxInRect( rectLeftIndex, rectTopIndex, rectRightIndex, rectBottomIndex, ref minElevationInRect, ref maxElevationInRect );
 
             float range = maxElevationInRect - minElevationInRect; //topoData.MaximumElevation - topoData.MinimumElevation;
             float oneOverRange = 1.0f / range;
 
-            Bitmap bmp = new Bitmap( OutputImageWidth(), OutputImageHeight(), System.Drawing.Imaging.PixelFormat.Format32bppRgb );
+            Bitmap bmp = new Bitmap( outputImageWidth(), outputImageHeight(), System.Drawing.Imaging.PixelFormat.Format32bppRgb );
 
-            Int32[] pixels = new Int32[ OutputImagePixelCount() ];
+            Int32[] pixels = new Int32[ outputImagePixelCount() ];
 
             // generate grayscale bitmap from normalized topo data
             // note : looping in TOPO MAP SPACE
-            //for (int row = 0; row < topoData.NumRows(); ++row)
-            Parallel.For ( rectTop, rectTop + OutputImageHeight() - 1, row =>      // I think the "to" here should be + 1 the upper bound, docs say it is Exclusive
+            //for (int row = 0; row < topoData.NumRows; ++row)
+            Parallel.For ( rectTopIndex, rectTopIndex + outputImageHeight() - 1, row =>      // I think the "to" here should be + 1 the upper bound, docs say it is Exclusive
             {
                 // compute offset of this row in OUTPUT IMAGE SPACE
-                int offset = (row - rectTop) * OutputImageWidth();
+                int offset = (row - rectTopIndex) * outputImageWidth();
 
-                //for (int col = 0; col < topoData.NumCols(); ++col)
-                for (int col = rectLeft; col <= rectRight; ++col)
+                //for (int col = 0; col < topoData.NumCols; ++col)
+                for (int col = rectLeftIndex; col <= rectRightIndex; ++col)
                 {
                     float normalizedValue = (topoData.ValueAt( row, col ) - minElevationInRect) * oneOverRange;
 
                     //bmp.SetPixel(col, row, Color.FromArgb(argb)); // seem to remember this being painfully slow
-                    pixels[ offset ] = NormalizedHeightToColor( normalizedValue );// argb;
+                    pixels[ offset ] = normalizedHeightToColor( normalizedValue );// argb;
                     ++offset;
                 }  
             //}   // end for row
@@ -815,8 +894,8 @@ namespace FLTTopoContour
 
                 //set the beginning of pixel data
                 //bmpData.Scan0 = pointer;
-                //System.Runtime.InteropServices.Marshal.Copy(pixels, 0, bmpData.Scan0, topoData.NumCols() * topoData.NumRows());
-                System.Runtime.InteropServices.Marshal.Copy(pixels, 0, bmpData.Scan0, OutputImagePixelCount() );
+                //System.Runtime.InteropServices.Marshal.Copy(pixels, 0, bmpData.Scan0, topoData.NumCols * topoData.NumRows());
+                System.Runtime.InteropServices.Marshal.Copy(pixels, 0, bmpData.Scan0, outputImagePixelCount() );
 
                 //Unlock the pixels
                 bmp.UnlockBits(bmpData);
@@ -835,10 +914,10 @@ namespace FLTTopoContour
 
         // -------------------------------------------------------------------------------------------------------------------
         // note : assumes topoData has been quantized by contourHeights
-        static void TopoToContourBitmap(FLTTopoData topoData, String fileName )
+        static private void topoToContourBitmap(FLTTopoData topoData, String fileName )
         {
             //Create an empty Bitmap of the expected size
-            Bitmap contourMap = new Bitmap( OutputImageWidth(), OutputImageHeight(), System.Drawing.Imaging.PixelFormat.Format32bppRgb);
+            Bitmap contourMap = new Bitmap( outputImageWidth(), outputImageHeight(), System.Drawing.Imaging.PixelFormat.Format32bppRgb);
 
 #if false
             // normal, slow way
@@ -847,7 +926,7 @@ namespace FLTTopoContour
             // serial operation
             for ( int row = 1; row < topoData.NumRows(); ++row )
             {
-                for ( int col = 1; col < topoData.NumCols(); ++col )
+                for ( int col = 1; col < topoData.NumCols; ++col )
                 {
                     float   currentValue = topoData.ValueAt( row, col );
                     float   aboveValue = topoData.ValueAt( row - 1, col );
@@ -860,7 +939,7 @@ namespace FLTTopoContour
             }
 #else
             // need to use byte array for pixels
-            Int32[]     pixels = new Int32[ OutputImagePixelCount() ];
+            Int32[]     pixels = new Int32[ outputImagePixelCount() ];
 
             // ------------------------------
             // single pixel row computation (alternating color of odd/even contours)
@@ -868,12 +947,12 @@ namespace FLTTopoContour
             {
                 float leftValue = topoData.ValueAt(row, 0);
                 // index to first pixel in row
-                int currentPixelIndex = ( row - rectTop ) * OutputImageWidth();
+                int currentPixelIndex = ( row - rectTopIndex ) * outputImageWidth();
 
                 Int32 currentPixel = backgroundColor;
 
                 // note : looping in topo map space
-                for (int col = rectLeft; col <= rectRight; ++col)
+                for (int col = rectLeftIndex; col <= rectRightIndex; ++col)
                 {
                     float aboveValue = topoData.ValueAt(row - 1, col);
                     float currentValue = topoData.ValueAt(row, col);
@@ -924,14 +1003,14 @@ namespace FLTTopoContour
             // single pixel row computation (all contours same color)
             Func<int, int>ComputePixelRowSingleColorContours = ( row ) =>
             {
-                float   leftValue = topoData.ValueAt( row, rectLeft );
+                float   leftValue = topoData.ValueAt( row, rectLeftIndex );
 
                 // index to first pixel in row (in image space)
-                int     currentPixelIndex = (row - rectTop) * OutputImageWidth();   
+                int     currentPixelIndex = (row - rectTopIndex) * outputImageWidth();   
 
                 Int32   currentPixel = backgroundColor;
 
-                for ( int col = rectLeft; col <= rectRight; ++col ) // note : moving in topo space
+                for ( int col = rectLeftIndex; col <= rectRightIndex; ++col ) // note : moving in topo space
                 {
                     float   aboveValue = topoData.ValueAt( row - 1, col );
                     float   currentValue = topoData.ValueAt( row, col );
@@ -951,17 +1030,17 @@ namespace FLTTopoContour
 
 
             // TODO : sort out the '+1' on the start row. They're there because the compute functions acccess currentRow-1, so you cannot start
-            // at row zero. So most times row zero of the bitmap is blank. Can ignore the +1 if rectTop is >0, otherwise fill the bitmap row 0 or something.
+            // at row zero. So row zero of the bitmap is blank. Can ignore the +1 if rectTop is >0, otherwise fill the bitmap row 0 or something.
             if ( OutputModeType.Alternating == outputMode )
             {
-                Parallel.For( rectTop + 1, rectBottom, row =>
+                Parallel.For( rectTopIndex + 1, rectBottomIndex, row =>
                 {
                     ComputePixelRowAlternatingColorContours( row );
                 } );
             }
             else
             {
-                Parallel.For( rectTop + 1, rectBottom, row =>
+                Parallel.For( rectTopIndex + 1, rectBottomIndex, row =>
                 {
                     ComputePixelRowSingleColorContours( row );
                 } );
@@ -974,14 +1053,14 @@ namespace FLTTopoContour
             int x;
             int y;
             // init first row to all white (could do detection here too, but will skip for now)
-            for ( x = 0; x < topoData.NumCols(); ++x )
+            for ( x = 0; x < topoData.NumCols; ++x )
             {
                 contourMap.SetPixel( x, 0, Color.FromArgb( whitePixel ) );
             }
 
-            for ( y = 0; y < topoData.NumRows(); ++y )
+            for ( y = 0; y < topoData.NumRows; ++y )
             {
-                for ( x = 0; x < topoData.NumCols(); ++x )
+                for ( x = 0; x < topoData.NumCols; ++x )
                 {
                     contourMap.SetPixel( x, y, Color.FromArgb( pixels[ y, x ] ) );
                 }
@@ -997,13 +1076,12 @@ namespace FLTTopoContour
 
                 //Lock all pixels
                 System.Drawing.Imaging.BitmapData bmpData = contourMap.LockBits(
-                           //new Rectangle(0, 0, topoData.NumCols(), topoData.NumRows()),
-                           new Rectangle( 0, 0, OutputImageWidth(), OutputImageHeight()),
+                           //new Rectangle(0, 0, topoData.NumCols, topoData.NumRows),
+                           new Rectangle( 0, 0, outputImageWidth(), outputImageHeight()),
                            System.Drawing.Imaging.ImageLockMode.WriteOnly, contourMap.PixelFormat);
 
                 // copy pixels into bitmap
-                //System.Runtime.InteropServices.Marshal.Copy( pixels, 0, bmpData.Scan0, topoData.NumCols() * topoData.NumRows() );
-                System.Runtime.InteropServices.Marshal.Copy( pixels, 0, bmpData.Scan0, OutputImageWidth() * OutputImageHeight() );
+                System.Runtime.InteropServices.Marshal.Copy( pixels, 0, bmpData.Scan0, outputImageWidth() * outputImageHeight() );
 
                 //Unlock the pixels
                 contourMap.UnlockBits(bmpData);
@@ -1021,11 +1099,152 @@ namespace FLTTopoContour
         }
 
         // -------------------------------------------------------------------------------------------------------------------
+        static private void readDescriptor( FLTTopoData data, String inputFileBaseName )
+        {
+            try
+            {
+                data.ReadHeaderFile(inputFileBaseName);
+            }
+            catch 
+            {
+                throw;
+            }
+        }
+
+        // -----------------------------------------------------------------------------------------------------------------------
+        static private void readData( FLTTopoData data, String inputFileBaseName )
+        {
+            System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
+            stopwatch.Reset();
+            stopwatch.Start();
+
+            try
+            {
+                data.ReadDataFile(inputFileBaseName);
+            }
+            catch
+            {
+                throw;
+            }
+
+            stopwatch.Stop();
+            if (reportTimings)
+            {
+                System.Console.WriteLine("Data read took " + (stopwatch.ElapsedMilliseconds / 1000.0f) + " seconds.");
+            }
+        }
+
+        // -------------------------------------------------------------------------------------------------------------------
+        static Boolean handleRectOptions( FLTTopoData data )
+        {
+            Boolean validated = true;
+
+            // note : coordinates check first, so indices will be ignored if also specified
+            if (rectCoordinatesSpecified)
+            {
+                Boolean coordinatesValid = true;
+                var validationMessages = new List<String>(20);
+
+                try
+                {
+                    coordinatesValid = data.Descriptor.ValidateCoordinates( rectNorthLatitude, rectWestLongitude, rectSouthLatitude, rectEastLongitude,
+                                                                            NorthString, WestString, SouthString, EastString,
+                                                                            validationMessages );                                                                            
+                }
+                catch { throw; }
+
+                // convert to indices
+                if ( coordinatesValid )
+                {
+                    rectLeftIndex = data.Descriptor.LongitudeToColumnIndex( rectWestLongitude );
+                    rectRightIndex = data.Descriptor.LongitudeToColumnIndex( rectEastLongitude );
+                    rectTopIndex = data.Descriptor.LatitudeToRowIndex( rectNorthLatitude );
+                    rectBottomIndex = data.Descriptor.LatitudeToRowIndex( rectSouthLatitude );
+                }
+                else
+                {
+                    Console.WriteLine("Errors in specified rect coordinates:");
+                    foreach (var msg in validationMessages)
+                    {
+                        Console.WriteLine("  * " + msg);
+                    }
+
+                    validated = false;
+                }
+            }
+            else if (rectIndicesSpecified)
+            {
+                Boolean indicesValidated = true;
+                List<String> validationMessages = null;
+                try
+                {
+                    indicesValidated = data.Descriptor.ValidateRectIndices( rectLeftIndex, rectTopIndex, rectRightIndex, rectBottomIndex,
+                                                                            rectLeftName, rectTopName, rectRightName, rectBottomName,
+                                                                            out validationMessages);
+                }
+                catch { throw; }
+
+                if (false == indicesValidated)
+                {
+                    Console.WriteLine("Errors in rect indices:");
+                    foreach (var msg in validationMessages)
+                    {
+                        Console.WriteLine("  * " + msg);
+                    }
+                    validated = false;
+                }
+            }
+            else // no rect was specified, default to whole map
+            {
+                // TODO : may be better to get these extents from descriptor...
+                rectLeftIndex = 0;
+                rectRightIndex = data.NumCols - 1;
+                rectTopIndex = 0;
+                rectBottomIndex = data.NumRows - 1;
+            }
+
+            return validated;
+        }
+
+        // ---------------------------------------------------------------------------------------------------------------------
+        private static void dataReport( FLTTopoData data )
+        {
+            String indent = "  ";
+
+            Console.WriteLine( ConsoleSectionSeparator );
+            Console.WriteLine( "Data report :" );
+            Console.WriteLine( indent + "Map extents:" );
+            Console.WriteLine( indent + indent + WestString + " : " + data.Descriptor.WestLongitude );
+            Console.WriteLine( indent + indent + NorthString + " : " + data.Descriptor.NorthLatitude );
+            Console.WriteLine( indent + indent + EastString + " : " + data.Descriptor.EastLongitude );
+            Console.WriteLine( indent + indent + SouthString + " : " + data.Descriptor.SouthLatitude );
+            Console.WriteLine( indent + "Map Size (degrees):" );
+            Console.WriteLine( indent + indent + EastString + "/" + WestString + " : " + data.Descriptor.WidthDegrees );
+            Console.WriteLine( indent + indent + NorthString + "/" + SouthString + " : " + data.Descriptor.WidthDegrees);
+
+            // min/max report
+            Console.WriteLine( indent + "Minimum elevation : " + data.MinimumElevation );
+            // note : this assumes in northern/western hemisphere
+            Console.WriteLine( indent + indent + "Found at " + data.Descriptor.RowIndexToLatitude( data.MinElevationRow ) + NorthChar + "," + data.Descriptor.ColumnIndexToLongitude( data.MinElevationCol ) + WestChar );
+            Console.WriteLine( indent + "Maximum elevation : " + data.MaximumElevation );
+            Console.WriteLine( indent + indent + "Found at " + data.Descriptor.RowIndexToLatitude( data.MaxElevationRow ) + NorthChar + "," + data.Descriptor.ColumnIndexToLongitude( data.MaxElevationCol ) + WestChar );
+
+            Console.WriteLine();
+            Console.WriteLine( indent + "Descriptor fields:" );
+            var descriptorValues = data.Descriptor.GetValueStrings();
+            foreach( var valStr in descriptorValues )
+            {
+                Console.WriteLine( indent + indent + valStr );
+            }
+        }
+
+        // -------------------------------------------------------------------------------------------------------------------
         // -------------------------------------------------------------------------------------------------------------------
         static void Main(string[] args)
         {
             // ----- startup -----
-            InitOptionSpecifiers();
+            initOptionSpecifiers();
+            initProgramNotes();
 
             FLTDataLib.FLTTopoData topoData = new FLTDataLib.FLTTopoData();
 
@@ -1037,7 +1256,7 @@ namespace FLTTopoContour
             System.Console.WriteLine( "Version : " + versionNumber.ToString() );
 
             // ----- parse program arguments -----
-            Boolean parsed = ParseArgs(args);
+            Boolean parsed = parseArgs(args);
 
             if ( false == parsed )
             {
@@ -1046,142 +1265,131 @@ namespace FLTTopoContour
 
                 if ( helpRequested )
                 {
-                    ListAvailableOptions();
+                    reportAvailableOptions();
                 }
             }
             else // args parsed successfully
             {
                 if (helpRequested)
                 {
-                    ListAvailableOptions();
+                    reportAvailableOptions();
                 }
 
                 // report current options
-                ReportOptionValues();
-
-                // TODO : break into operations
+                reportOptionValues();
 
                 System.Console.WriteLine( ConsoleSectionSeparator );
 
-                // ---- read data ----
+                // ---- read descriptor -----
                 try
                 {
-                    stopwatch.Reset();
-                    stopwatch.Start();
-
-                    topoData.ReadFromFiles(inputFileBaseName);
-
-                    stopwatch.Stop();
-                }
-                catch (System.IO.FileNotFoundException e)  
-                {
-                    Console.WriteLine();
-                    Console.WriteLine( "Error:" );
-                    Console.WriteLine( e.Message );
-                    Console.WriteLine( "\nAn .hdr and .flt data file must exist in the current directory." );
-                    return; //throw; 
+                    readDescriptor( topoData, inputFileBaseName );
                 }
                 catch 
-                {
-                    throw;
+                { 
+                    return; 
                 }
 
-                lastOperationTimingMS = stopwatch.ElapsedMilliseconds;
-                if (reportTimings)
+                // ---- data report ----
+                if ( dataReportOnly )
                 {
-                    System.Console.WriteLine("Data read took " + (lastOperationTimingMS / 1000.0f) + " seconds.");
-                }
-
-                System.Console.WriteLine( ConsoleSectionSeparator );
-
-                // ---- init/validate rect related fields ----
-                if ( rectSpecified )
-                {
-                    List<String> rectValidationErrorMessages;
-                    Boolean rectValid = ValidateRect( rectLeft, rectTop, rectRight, rectBottom, topoData, out rectValidationErrorMessages );
-
-                    if ( false == rectValid )
+                    // ---- read data ----
+                    try
                     {
-                        Console.WriteLine( "Error(s) in specified " + optionTypeToSpecDict[OptionType.Rect].Description + " bounds :" );
-                        foreach( String errorMessage in rectValidationErrorMessages )
-                        {
-                            if ( errorMessage.Length > 0 )
-                            {
-                                Console.WriteLine( " *" + errorMessage );
-                            }
-                        }
-                        return; // EXIT!
+                        readData( topoData, inputFileBaseName );
                     }
-                }
+                    catch { return; }
 
-                if ( false == rectSpecified )
-                {
-                    // if user did not specify a rect, set bounds to whole topo
-                    rectLeft = 0;
-                    rectTop = 0;
-                    rectRight = topoData.NumCols() - 1;
-                    rectBottom = topoData.NumRows() - 1;
-                }
+                    Console.WriteLine( "Finding min/max..." );
+                    topoData.FindMinMax();
 
-                // ---- quantize data ----
-                if ( contourHeights > 1 )
-                {
-                    System.Console.WriteLine( "Quantizing topo data." );
-
-                    stopwatch.Reset();
-                    stopwatch.Start();
-
-                    topoData.Quantize( contourHeights );
-
-                    stopwatch.Stop();
-                    lastOperationTimingMS = stopwatch.ElapsedMilliseconds;
-                    if ( reportTimings )
-                    {
-                        System.Console.WriteLine( "Quantization took " + (lastOperationTimingMS / 1000.0f ) + " seconds." );
-                    }
-                }
-
-                // ---- produce output file ----
-                System.Console.WriteLine( ConsoleSectionSeparator );
-                if ( OutputModeType.Gradient == outputMode )
-                {
-                    System.Console.WriteLine( "Creating bitmap." );
-
-                    stopwatch.Reset();
-                    stopwatch.Start();
-
-                    TopoToGradientBitmap(topoData, outputFileName);
-
-                    stopwatch.Stop();
-                    lastOperationTimingMS = stopwatch.ElapsedMilliseconds;
-                    if (reportTimings)
-                    {
-                        System.Console.WriteLine("Creation took " + (lastOperationTimingMS / 1000.0f) + " seconds.");
-                        // took 145 seconds with 'large' grid
-                    }
+                    dataReport( topoData );
                 }
                 else
                 {
-                    // make contour map
-                    System.Console.WriteLine( "Creating contour map." );
-
-                    stopwatch.Reset();
-                    stopwatch.Start();
-
-                    TopoToContourBitmap( topoData, outputFileName );
-
-                    stopwatch.Stop();
-                    lastOperationTimingMS = stopwatch.ElapsedMilliseconds;
-                    if (reportTimings)
+                    // ---- validate rect options ----
+                    try
                     {
-                        System.Console.WriteLine("Contour map creation took " + (lastOperationTimingMS / 1000.0f) + " seconds.");
+                        Boolean rectValidated = handleRectOptions( topoData );
+
+                        if (false == rectValidated)
+                        {
+                            return; // TODO : error code?
+                        }
+                    }
+                    catch { return; }
+
+                    // ---- read data ----
+                    try
+                    {
+                        readData( topoData, inputFileBaseName );
+                    }
+                    catch { return; }
+
+                    System.Console.WriteLine( ConsoleSectionSeparator );
+
+                    // ---- quantize data ----
+                    if ( contourHeights > 1 )
+                    {
+                        System.Console.WriteLine( "Quantizing topo data." );
+
+                        stopwatch.Reset();
+                        stopwatch.Start();
+
+                        topoData.Quantize( contourHeights );
+
+                        stopwatch.Stop();
+                        lastOperationTimingMS = stopwatch.ElapsedMilliseconds;
+                        if ( reportTimings )
+                        {
+                            System.Console.WriteLine( "Quantization took " + (lastOperationTimingMS / 1000.0f ) + " seconds." );
+                        }
                     }
 
-                }
-            }
+                    // ---- produce output file ----
+                    // TODO : use delegates to clean this up
+                    System.Console.WriteLine( ConsoleSectionSeparator );
+                    if ( OutputModeType.Gradient == outputMode )
+                    {
+                        System.Console.WriteLine( "Creating bitmap." );
 
-            System.Console.WriteLine();
-        }
-    }
-}
+                        stopwatch.Reset();
+                        stopwatch.Start();
+
+                        topoToGradientBitmap(topoData, outputFileName);
+
+                        stopwatch.Stop();
+                        lastOperationTimingMS = stopwatch.ElapsedMilliseconds;
+                        if (reportTimings)
+                        {
+                            System.Console.WriteLine("Creation took " + (lastOperationTimingMS / 1000.0f) + " seconds.");
+                            // took 145 seconds with 'large' grid
+                        }
+                    }
+                    else
+                    {
+                        // make contour map
+                        System.Console.WriteLine( "Creating contour map." );
+
+                        stopwatch.Reset();
+                        stopwatch.Start();
+
+                        topoToContourBitmap( topoData, outputFileName );
+
+                        stopwatch.Stop();
+                        lastOperationTimingMS = stopwatch.ElapsedMilliseconds;
+                        if (reportTimings)
+                        {
+                            System.Console.WriteLine("Contour map creation took " + (lastOperationTimingMS / 1000.0f) + " seconds.");
+                        }
+
+                    }
+                }   // end if !dataReportOnly
+
+                System.Console.WriteLine();
+            }   // end if args parsed successfully
+        }   // end Main()
+
+    }   // end class Program
+}   // end namespace
 

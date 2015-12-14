@@ -41,7 +41,7 @@ namespace FLTTopoToImage
                 }
                 catch { throw; }
 
-                Bitmap bmp = new Bitmap(topoData.NumCols(), topoData.NumRows(), System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+                Bitmap bmp = new Bitmap(topoData.NumCols, topoData.NumRows, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
 
                 topoData.FindMinMax();
 
@@ -51,10 +51,10 @@ namespace FLTTopoToImage
                 System.Console.Write("Processing");
 
                 // generate grayscale bitmap from normalized topo data
-                for (int row = 0; row < topoData.NumRows(); ++row)
+                for (int row = 0; row < topoData.NumRows; ++row)
                 {
                     System.Console.Write(".");
-                    for (int col = 0; col < topoData.NumCols(); ++col)
+                    for (int col = 0; col < topoData.NumCols; ++col)
                     {
                         float normalizedValue = (topoData.ValueAt(row, col) - topoData.MinimumElevation) * oneOverRange;
 

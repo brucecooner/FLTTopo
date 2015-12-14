@@ -23,7 +23,6 @@ using System.Threading.Tasks;
 using System.IO;
 
 // TODO :
-// -extract rest of fields, save in descriptor
 // -handle handle upper/lowercase mixed names in header files
 // -handle MAJOR offset in Descriptor coordinates after cell is extracted
 
@@ -35,8 +34,8 @@ namespace FLTDataLib
         // ---- constants ----
         public const string NumberOfColumnsKey  = "ncols";
         public const string NumberOfRowsKey     = "nrows";
-        public const string XLowerLeftCornerKey = "xllcorner";
-        public const string YLowerLeftCornerKey = "yllcorner";
+        public const string XLowerLeftCornerKey = "xllcorner";  // it's odd to me that the official format uses X and Y to specify this
+        public const string YLowerLeftCornerKey = "yllcorner";  // coordinate when Lat and Long would seem more appropriate, given the domain
         public const string CellSizeKey         = "cellsize";
         public const string NoDataValueKey      = "NODATA_value";
         public const string ByteOrderKey        = "byteorder";
@@ -50,13 +49,129 @@ namespace FLTDataLib
 
         public string ByteOrder { get; set; }
 
+        // longitude/latitude (degrees) of lower left corner of map data
         public  float   XLowerLeftCorner { get; set; }
         public  float   YLowerLeftCorner { get; set; }
 
-        // just keep as string (for now since not using for any calculations)
-        public string    CellSize { get; set; }
+        // degrees between map data points
+        public float    CellSize { get; set; }
 
         public int      NoDataValue { get; set; }
+
+        // ---- calculated values ----
+        // north/south size of map
+        public float HeightDegrees
+        {
+            get
+            {
+                if (false == IsInitialized())
+                { throw new System.InvalidOperationException("Descriptor not initialized."); }
+
+                return CellSize * NumberOfRows;
+            }
+        }
+        // east/west size of map
+        public float WidthDegrees
+        {
+            get
+            {
+                if (false == IsInitialized())
+                { throw new System.InvalidOperationException("Descriptor not initialized."); }
+
+                return CellSize * NumberOfColumns;
+            }
+        }
+
+        // coordinates (in degrees) of sides of map
+        public float WestLongitude
+        {
+            get 
+            { 
+                if ( false == IsInitialized() ) 
+                    { throw new System.InvalidOperationException( "Descriptor not initialized." ); }
+
+                return XLowerLeftCorner; 
+            }
+        }
+
+        public float SouthLatitude
+        {
+            get 
+            { 
+                if ( false == IsInitialized() ) 
+                    { throw new System.InvalidOperationException( "Descriptor not initialized." ); }
+
+                return YLowerLeftCorner; 
+            }
+        }
+
+        public float NorthLatitude
+        {
+            get 
+            {
+                if ( false == IsInitialized() ) 
+                    { throw new System.InvalidOperationException( "Descriptor not initialized." ); }
+
+                return SouthLatitude + HeightDegrees;
+            }
+        }
+
+        public float EastLongitude
+        {
+            get
+            {
+                if (false == IsInitialized())
+                { throw new System.InvalidOperationException("Descriptor not initialized."); }
+
+                return WestLongitude + WidthDegrees;    // longitude increases to the east
+            }
+        }
+
+        public float RowIndexToLatitude( int index )
+        {
+            float latitudeDegrees;
+
+            if ( IsInitialized() )
+            {
+                if ( index >= 0 && index < NumberOfRows )
+                {
+                    latitudeDegrees = NorthLatitude - ( CellSize * index );
+                }
+                else
+                {
+                    throw new System.ArgumentOutOfRangeException( "specified row index (" + index + ") not within bounds of map data" );
+                }
+            }
+            else
+            {
+                throw new System.InvalidOperationException( "descriptor not initialized" );
+            }
+
+            return latitudeDegrees;
+        }
+
+        public float ColumnIndexToLongitude( int index )
+        {
+            float longitudeDegrees;
+
+            if (IsInitialized())
+            {
+                if ( index >= 0 && index < NumberOfColumns )
+                {
+                    longitudeDegrees = WestLongitude + ( index * CellSize );
+                }
+                else
+                {
+                    throw new System.ArgumentOutOfRangeException("specified column index (" + index + ") not within bounds of map data");
+                }
+            }
+            else
+            {
+                throw new System.InvalidOperationException("descriptor not initialized");
+            }
+
+            return longitudeDegrees;
+        }
 
         // -----------------------------------------------------------------------------------------
         // ---- constructor ----
@@ -71,6 +186,206 @@ namespace FLTDataLib
         {
             Boolean initialized = (NumberOfRows > 0) && (NumberOfColumns > 0);
             return initialized;
+        }
+
+        // ---- validation ----
+
+        // --------------------------------------------------------------------------------------------------------
+        private Boolean validateIndexWithinBounds(int index, int lowerBound, int upperBound, String boundName, List<String> messages)
+        {
+            Boolean valid = true;
+
+            if ( index < lowerBound || index > upperBound )
+            {
+                messages.Add( boundName + " index is not within bounds [" + lowerBound + ".." + upperBound + "]");
+                valid = false;
+            }
+            
+            return valid;
+        }
+
+        // --------------------------------------------------------------------------------------------------------
+        private String generateCoordinateOutsideBoundsMessage(  float invalidDegrees, String invalidCoordinateName,
+                                                                String lowerBoundName, String upperBoundName )
+        {
+            return invalidCoordinateName + "(" + invalidDegrees + ") not in " + lowerBoundName + "/" + upperBoundName + " bounds of map.";
+        }
+
+        // --------------------------------------------------------------------------------------------------------
+        // validates that all four specified coordinates are within bounds of map, can optionally return error messages if not
+        public Boolean ValidateCoordinates( float northDegrees, float westDegrees, float southDegrees, float eastDegrees,
+                                            String northName, String westName, String southName, String eastName, // only used if messages!=null
+                                            List<String> messages ) // only returned if null
+        {
+            Boolean westValid = ValidateLongitude( westDegrees );
+            if ( false == westValid && null != messages )
+            {
+                messages.Add( generateCoordinateOutsideBoundsMessage( westDegrees, westName, eastName, westName ) );
+            }
+
+            Boolean northValid = ValidateLatitude( northDegrees );
+            if (false == westValid && null != messages)
+            {
+                messages.Add( generateCoordinateOutsideBoundsMessage( northDegrees, northName, southName, northName) );
+            }
+
+            Boolean eastValid = ValidateLongitude( eastDegrees );
+            if (false == eastValid && null != messages)
+            {
+                messages.Add(generateCoordinateOutsideBoundsMessage( eastDegrees, westName, eastName, westName));
+            }
+
+            Boolean southValid = ValidateLatitude( southDegrees );
+            if (false == southValid && null != messages)
+            {
+                messages.Add( generateCoordinateOutsideBoundsMessage( southDegrees, southName, southName, northName));
+            }
+
+            return westValid && northValid && eastValid && southValid;
+        }
+    
+        // --------------------------------------------------------------------------------------------------------
+        // returns true if specified indices will result in a rectangle contained within the data
+        // throws : InvalidOperationException if instance is not initialized
+        // notes : also tests for ordering of indices (i.e. left < right, top > bottom)
+        public Boolean ValidateRectIndices( int left, int top, int right, int bottom,
+                                            String leftName, String topName, String rightName, String bottomName,
+                                            out List<String> messages )
+        {
+            Boolean leftValid = true,
+                    rightValid = true,
+                    topValid = true,
+                    bottomValid = true,
+                    allOrdered = true;
+
+            messages = new List<String>( 10 );
+
+            if ( !IsInitialized() )
+            {
+                throw new System.InvalidOperationException( "FltDescriptor is not initialized" );
+            }
+            else
+            {
+                // bounds
+                leftValid   = validateIndexWithinBounds( left,  0, NumberOfColumns - 1, leftName,   messages );
+                rightValid  = validateIndexWithinBounds( right, 0, NumberOfColumns - 1, rightName,  messages );
+                topValid    = validateIndexWithinBounds( top,   0, NumberOfRows - 1,    topName,    messages );
+                bottomValid = validateIndexWithinBounds( bottom,0, NumberOfRows - 1,    bottomName, messages );
+
+                if ( left >= right )
+                {
+                    allOrdered = false;
+                    messages.Add( leftName + " index(" + left + ") must be less than " + rightName + " index(" + right + ")" );
+                }
+
+                // this is a little odd seeming at first glance, the 'top' of the bounds must be less than the 'bottom'. 
+                // This is because the row indexes increase as you go down (i.e. south) in topo space, which is addressed 
+                // similary to screen space or rows in a bitmap, where 0,0 is in the upper left corner.
+                if (top >= bottom )
+                {
+                    allOrdered = false;
+                    messages.Add( topName + " index(" + top + ") must be less than " + bottomName + " index(" + bottom + ")");
+                }
+            }
+
+            return leftValid && rightValid && topValid && bottomValid && allOrdered;
+        }
+
+        // --------------------------------------------------------------------
+        public Boolean ValidateLongitude( float longitudeDegrees )
+        {
+            Boolean valid = false;
+
+            if ( IsInitialized() )
+            {
+                // note : assumes decreasing values to the east
+
+                if ( ( WestLongitude < longitudeDegrees ) &&  (longitudeDegrees < EastLongitude) )
+                {
+                    valid = true;
+                }
+            }
+            else
+            {
+                throw new System.InvalidOperationException( "Descriptor not initialized" );
+            }
+
+            return valid;
+        }
+
+        // --------------------------------------------------------------------
+        public Boolean ValidateLatitude(float latitudeDegrees)
+        {
+            Boolean valid = false;
+
+            if (IsInitialized())
+            {
+                if ( (SouthLatitude < latitudeDegrees ) &&  ( latitudeDegrees < NorthLatitude ) )
+                {
+                    valid = true;
+                }
+            }
+            else
+            {
+                throw new System.InvalidOperationException("Descriptor not initialized");
+            }
+
+            return valid;
+        }
+
+        // --------------------------------------------------------------------
+        // ---- conversion ----
+        // converts longitude in degrees to a column index 
+        public int LongitudeToColumnIndex( float longitudeDegrees )
+        {
+            int index = 0;
+
+            if ( IsInitialized() )
+            {
+                if ( ValidateLongitude( longitudeDegrees ) )
+                {
+                    // how far into map is specified coordinate
+                    float fraction = Math.Abs( longitudeDegrees - WestLongitude) / WidthDegrees;
+
+                    fraction = Math.Max(0, Math.Min(1, fraction));  // ensure fraction is 0..1
+
+                    index = (int)(NumberOfColumns * fraction);
+                }
+            }
+            else
+            {
+                throw new System.InvalidOperationException( "Descriptor not initialized." );
+            }
+
+            return index;
+        }
+
+        // ---------------------------------------------------------------------------
+        public int LatitudeToRowIndex(float latitudeDegrees )
+        {
+            int index = 0;
+
+            if ( IsInitialized() )
+            {
+                if ( ValidateLatitude( latitudeDegrees ) )
+                {
+                    float fraction = (latitudeDegrees - SouthLatitude) / HeightDegrees;
+
+                    fraction = Math.Max(0, Math.Min(1, fraction));  // ensure fraction is 0..1
+
+                    // latitudes increase from 'bottom' to 'top', when viewed on a map (i.e. north=up), but this data is actually stored in the map
+                    // beginning at the northernmost latitude, so the map is stored 'upside down' relative to latitude, so subtract the computed
+                    // row from the number of rows
+                    // Or think about it this way : the 'lower left' corner of the data is in 'map' space, not data space.
+                    index = NumberOfRows - (int)(NumberOfRows * fraction);
+                }
+            }
+            else
+            {
+                throw new System.InvalidOperationException( "Descriptor not initialized." );
+            }
+
+            return index;
         }
 
         // ----------------------------------------------------------------------------------------
@@ -94,6 +409,10 @@ namespace FLTDataLib
                     value += fileContents[currentChar];
                     ++currentChar; 
                 }
+            }
+            else
+            {
+                throw new Exception("Could not find '" + Key + "' key in file.");
             }
 
             return value;
@@ -129,6 +448,10 @@ namespace FLTDataLib
                         value = -1;
                     }
                 }
+            }
+            else
+            {
+                throw new Exception("Could not find '" + Key + "' key in file.");
             }
 
             return value;
@@ -166,6 +489,10 @@ namespace FLTDataLib
                     }
                 }
             }
+            else
+            {
+                throw new Exception( "Could not find '" + Key + "' key in file." );
+            }
 
             return value;
         }
@@ -175,26 +502,35 @@ namespace FLTDataLib
         {
             Boolean success = true;
 
-            // Read the file as one string.
-            System.IO.StreamReader headerFile = new System.IO.StreamReader(headerFileName);
-            // represents entire header file contents
-            string headerString = headerFile.ReadToEnd();
+            try 
+            {
+                // Read the file as one string.
+                System.IO.StreamReader headerFile = new System.IO.StreamReader(headerFileName);
+                // represents entire header file contents
+                string headerString = headerFile.ReadToEnd();
 
-            // parse it out
-            NumberOfColumns     = GetIntValueFromHeaderFile( NumberOfColumnsKey,    headerString );
-            NumberOfRows        = GetIntValueFromHeaderFile( NumberOfRowsKey,       headerString );
-            XLowerLeftCorner    = GetFloatValueFromHeaderFile( XLowerLeftCornerKey, headerString );
-            YLowerLeftCorner    = GetFloatValueFromHeaderFile( YLowerLeftCornerKey, headerString );
-            CellSize            = GetStringValueFromHeaderFile( CellSizeKey,         headerString );
-            NoDataValue         = GetIntValueFromHeaderFile( NoDataValueKey,        headerString );
-            ByteOrder           = GetStringValueFromHeaderFile( ByteOrderKey,       headerString );
+                // parse it out
+                NumberOfColumns     = GetIntValueFromHeaderFile( NumberOfColumnsKey,    headerString );
+                NumberOfRows        = GetIntValueFromHeaderFile( NumberOfRowsKey,       headerString );
+                XLowerLeftCorner    = GetFloatValueFromHeaderFile( XLowerLeftCornerKey, headerString );
+                YLowerLeftCorner    = GetFloatValueFromHeaderFile( YLowerLeftCornerKey, headerString );
+                CellSize            = GetFloatValueFromHeaderFile( CellSizeKey,         headerString );
+                NoDataValue         = GetIntValueFromHeaderFile( NoDataValueKey,        headerString );
+                ByteOrder           = GetStringValueFromHeaderFile( ByteOrderKey,       headerString );
 
-            headerFile.Close();
+                headerFile.Close();
+            }
+            catch
+            {
+                throw;
+            }
 
             return success;
         }   // end ReadFromFile()
 
         // ----------------------------------------------------------------------------
+        // note : untested
+        /*
         public  async   void    SaveToFile( string  outFileBaseName )
         {
             // TODO : make this line up values
@@ -211,18 +547,23 @@ namespace FLTDataLib
                 await writer.WriteLineAsync( ByteOrderKey + spacer + ByteOrder );
             }
         }
+         * */
 
         //  ---------------------------------------------------------------------------
-        // writes fields to console
-        public void Report()
+        // generates series of strings
+        public List<String> GetValueStrings()
         {
-            System.Console.WriteLine( NumberOfColumnsKey + " : " + NumberOfColumns );
-            System.Console.WriteLine( NumberOfRowsKey + " : " + NumberOfRows );
-            System.Console.WriteLine( XLowerLeftCornerKey + " : " + XLowerLeftCorner );
-            System.Console.WriteLine( YLowerLeftCornerKey + " : " + YLowerLeftCorner );
-            System.Console.WriteLine( CellSizeKey + " : " + CellSize );
-            System.Console.WriteLine( NoDataValueKey + " : " + NoDataValue );
-            System.Console.WriteLine( ByteOrderKey + " : " + ByteOrder );
+            var valueStrings = new List<String>( 10 );
+
+            valueStrings.Add( NoDataValueKey + " : " + NoDataValue );
+            valueStrings.Add( ByteOrderKey + " : " + ByteOrder);
+            valueStrings.Add( NumberOfColumnsKey + " : " + NumberOfColumns);
+            valueStrings.Add( NumberOfRowsKey + " : " + NumberOfRows);
+            valueStrings.Add( XLowerLeftCornerKey + " : " + XLowerLeftCorner);
+            valueStrings.Add( YLowerLeftCornerKey + " : " + YLowerLeftCorner);
+            valueStrings.Add( CellSizeKey + " : " + CellSize);
+
+            return valueStrings;
         }
     }   // end class FLTDescriptor
 }

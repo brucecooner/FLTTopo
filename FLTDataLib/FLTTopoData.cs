@@ -22,12 +22,18 @@ using System.Threading.Tasks;
 
 /* TODO :
  * -ability to load just the header, to validate against stuff in it, then proceed later with the flt file load
- *  -change byte order in header when data is flipped!
+ *  -note change of byte order in header when data is flipped?
  * 
  */
 
 namespace FLTDataLib
 {
+    // representation of usgs topo data stored in an hdr/flt file pair.
+    // Notes : 
+    //    -Height values are in meters.
+    //    -The data is stored starting with the northernmost row of points (latitude), so that it is addressed similarly to image bitmaps in
+    //     most graphic systems (i.e. row 0 refers to the topmost row, not the bottom row).
+    //    -Don't forget that longitudinal coordinates DECREASE to the west
     public class FLTTopoData
     {
         // -----------------------------------------------
@@ -55,8 +61,15 @@ namespace FLTDataLib
         // ---- info from data file ----
         byte[] topoDataByteArray = null;
 
-        public int NumRows() { return Descriptor.NumberOfRows; }
-        public int NumCols() { return Descriptor.NumberOfColumns; }
+        public int NumRows
+        {
+            get { return Descriptor.NumberOfRows; }
+        }
+
+        public int NumCols 
+        {
+            get { return Descriptor.NumberOfColumns; }
+        }
 
         // ----------------------------------------------------------------------
         // todo : parameter validation
@@ -98,11 +111,11 @@ namespace FLTDataLib
             }
 #else
             // parallel operation
-            for ( int row = 0; row < NumRows(); ++row )
+            for ( int row = 0; row < NumRows; ++row )
             {
-                Parallel.For( 0, NumCols(), col =>
+                Parallel.For( 0, NumCols, col =>
                     {
-                        int startIndex = FLTDataLib.Constants.FLT_FLOAT_SIZE * (row * NumCols() + col );
+                        int startIndex = FLTDataLib.Constants.FLT_FLOAT_SIZE * (row * NumCols + col );
 
                         byte[] temp = new byte[FLTDataLib.Constants.FLT_FLOAT_SIZE];
 
@@ -119,36 +132,73 @@ namespace FLTDataLib
         }
 
         // ----------------------------------------------------------------------
-        private Boolean ReadTopoData(String fileName, int NumberOfRows, int NumberOfColumns )
+        // note : filename should NOT have an extension
+        // throws exceptions
+        public void ReadDataFile( String filename )
         {
-            Boolean success = true;
+            String dataFilename = filename + "." + FLTDataLib.Constants.DATA_FILE_EXTENSION;
 
-            Report( "Reading topo data file : " + fileName + "\n" );
+            Report( "Reading topo data file : " + filename + "\n" );
+
+            // cannot load data if descriptor hasn't been loaded
+            if ( null == Descriptor )
+            {
+                throw new System.InvalidOperationException( "Descriptor not initialized." );
+            }
+            else
+            {
+                try
+                {
+                    System.IO.FileStream file = new System.IO.FileStream( dataFilename, System.IO.FileMode.Open);
+
+                    System.IO.BinaryReader binaryFile = new System.IO.BinaryReader(file);
+
+                    topoDataByteArray = binaryFile.ReadBytes( FLTDataLib.Constants.FLT_FLOAT_SIZE * Descriptor.NumberOfColumns * Descriptor.NumberOfRows );
+
+                    Report("  Topo Data read. Length : " + topoDataByteArray.Length + " bytes.\n");
+
+                    string  expectedByteString = ( System.BitConverter.IsLittleEndian ) ? FLTDescriptor.LSBFirst_Value : FLTDescriptor.MSBFirst_Value;
+
+                    if ( false == String.Equals(Descriptor.ByteOrder, expectedByteString, StringComparison.OrdinalIgnoreCase ) )
+                    {
+                        System.Console.WriteLine( "  Expected byte order : " + expectedByteString + " flt byte order : " + Descriptor.ByteOrder );
+                        Report( "  Reversing data byte order.\n" );
+                        // flip the data
+                        FlipDataByteOrder();
+                    }
+                }
+                catch (System.IO.FileNotFoundException error)
+                {
+                    Report("ERROR : Could not find data file : " + dataFilename + "\n");
+
+                    throw error;
+                }
+                catch
+                {
+                    throw;
+                }
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // fills descriptor data from specified file
+        // note : filename should NOT have an extension
+        // TODO : validate that all necessary keys are present in file
+        public void ReadHeaderFile(String filename)
+        {
+            String headerFileName = filename + "." + FLTDataLib.Constants.HEADER_FILE_EXTENSION;
+
+            Report("Reading header file : " + headerFileName + "\n");
+
+            Descriptor = new FLTDescriptor();
 
             try
             {
-                System.IO.FileStream file = new System.IO.FileStream( fileName, System.IO.FileMode.Open);
-
-                System.IO.BinaryReader binaryFile = new System.IO.BinaryReader(file);
-
-                topoDataByteArray = binaryFile.ReadBytes( FLTDataLib.Constants.FLT_FLOAT_SIZE * NumberOfColumns * NumberOfRows );
-
-                Report("Topo Data read. Length : " + topoDataByteArray.Length + " bytes.\n");
-
-                string  expectedByteString = ( System.BitConverter.IsLittleEndian ) ? FLTDescriptor.LSBFirst_Value : FLTDescriptor.MSBFirst_Value;
-
-                if ( false == String.Equals(Descriptor.ByteOrder, expectedByteString, StringComparison.OrdinalIgnoreCase ) )
-                {
-                    System.Console.WriteLine( "Expected byte order : " + expectedByteString + " flt byte order : " + Descriptor.ByteOrder );
-                    Report( "Reversing data byte order.\n" );
-                    // flip the data
-                    FlipDataByteOrder();
-                }
+                Descriptor.ReadFromFile(headerFileName);
             }
             catch (System.IO.FileNotFoundException error)
             {
-                Report("Could not find flt data file : " + fileName + "\n");
-                success = false;
+                Report("Error : Could not find descriptor file : " + headerFileName + "\n");
 
                 throw error;
             }
@@ -156,57 +206,21 @@ namespace FLTDataLib
             {
                 throw;
             }
-
-            return success;
         }
 
         // ---------------------------------------------------------------------
-        // note : inputFileName should NOT have an extension, there are multiple files with the same name
-        public  Boolean ReadFromFiles( String inputFileName )
+        public  void ReadFromFiles( String filenameWithoutExtension )
         {
-            Boolean success = true;
-
-            String  headerFileName = inputFileName + "." + FLTDataLib.Constants.HEADER_FILE_EXTENSION;
-            String dataFileName = inputFileName + "." + FLTDataLib.Constants.DATA_FILE_EXTENSION;
-
-            Report("Reading header file : " + headerFileName + "\n");
-
-            Descriptor = new FLTDescriptor();
-            Boolean headerSuccess = Descriptor.ReadFromFile(headerFileName);
-
-            if (headerSuccess)
-            {
-                if ( verbose )
-                {
-                    Descriptor.Report();
-                }
-
-                Report( "----\n" );
-
-                try
-                {
-                    ReadTopoData(dataFileName, Descriptor.NumberOfRows, Descriptor.NumberOfColumns);
-                }
-                catch
-                {
-                    throw;
-                }
-            }
-            else
-            {
-                Report("ERROR : Failure reading from header file : " + headerFileName + "\n\n");
-                success = false;
-            }
-
-            return success;
+            ReadHeaderFile( filenameWithoutExtension );
+            ReadDataFile( filenameWithoutExtension );
         }   // end ReadFromFiles()
 
         // --------------------------------------------------------------------------------------------
         // bits of data that might be useful (but aren't necessarily initialized)
         public Boolean MinMaxFound { get; private set; }
 
-        public  float MaximumElevation { get; private set; }
-        public  float MinimumElevation{ get; private set; }
+        public  float MaximumElevation;
+        public  float MinimumElevation;
 
         // coordinates of max,min
         public  int MaxElevationRow { get; private set; }
@@ -218,20 +232,22 @@ namespace FLTDataLib
         // -------------------------------------------------------------------------------------------
         // returns minimum and maximum elevation values in specified rect
         // note : out of order coordinates will be reversed
+        // detects previously discovered min/max
         public void FindMinMaxInRect(int x1, int y1, int x2, int y2, ref float min, ref float max )
         {
             // validation urrrrrrgh
             if (!IsInitialized())
             {
-                throw new Exception( "Topo data has not been initialized." );
+                throw new System.InvalidOperationException( "Topo data has not been initialized." );
             }
 
-            if (        ( x1 < 0 ) ||  ( x1 >= NumCols() )
-                    ||  ( x2 < 0 ) ||  ( x2 >= NumCols() )
-                    ||  ( y1 < 0 ) || ( y1 >= NumRows() )
-                    ||  ( y2 < 0 ) || ( y2 >= NumRows() ) )
+            // todo : use descriptor's new validator function to do this!
+            if ((x1 < 0) || (x1 >= NumCols)
+                    || (x2 < 0) || (x2 >= NumCols)
+                    || (y1 < 0) || (y1 >= NumRows)
+                    || (y2 < 0) || (y2 >= NumRows))
             {
-                throw new ArgumentOutOfRangeException( "A coordinate (" + x1 +","+ y1 +"," + x2+"," + y2+") was outside the bounds of the topo map dimensions (0,0," + NumCols()+","+NumRows()+")" );
+                throw new ArgumentOutOfRangeException("A coordinate (" + x1 + "," + y1 + "," + x2 + "," + y2 + ") was outside the bounds of the topo map dimensions (0,0," + (NumCols-1) + "," + (NumRows-1) + ")");
             }
 
             //reverse needed?
@@ -273,44 +289,47 @@ namespace FLTDataLib
         }
 
         // -------------------------------------------------------------------------------------------
-        public void FindMinMax()
+        // finds min/max in entire map, skips if already found unless forceSearch is true
+        // note : records locations of min/max elevations
+        public void FindMinMax( Boolean forceSearch = false )
         {
-            if (IsInitialized())
+            if ( IsInitialized() )
             {
-                MaximumElevation = float.MinValue;
-                MinimumElevation = float.MaxValue;
-
-                for (int currentRow = 0; currentRow < Descriptor.NumberOfRows; ++currentRow )
+                if ( false == MinMaxFound || forceSearch )
                 {
-                    for (int currentColumn = 0; currentColumn < Descriptor.NumberOfColumns; ++currentColumn)
+                    MaximumElevation = float.MinValue;
+                    MinimumElevation = float.MaxValue;
+
+                    for (int currentRow = 0; currentRow < Descriptor.NumberOfRows; ++currentRow )
                     {
-                        int startIndex = FLTDataLib.Constants.FLT_FLOAT_SIZE * ((currentRow * Descriptor.NumberOfColumns) + currentColumn);
-
-                        float currentValue = System.BitConverter.ToSingle( topoDataByteArray, startIndex );
-
-                        if (currentValue > MaximumElevation)
+                        for (int currentColumn = 0; currentColumn < Descriptor.NumberOfColumns; ++currentColumn)
                         {
-                            MaximumElevation = currentValue;
+                            int startIndex = FLTDataLib.Constants.FLT_FLOAT_SIZE * ((currentRow * Descriptor.NumberOfColumns) + currentColumn);
 
-                            MaxElevationRow = currentRow;
-                            MaxElevationCol = currentColumn;
-                        }
+                            float currentValue = System.BitConverter.ToSingle( topoDataByteArray, startIndex );
 
-                        if (currentValue < MinimumElevation)
-                        {
-                            MinimumElevation = currentValue;
+                            if (currentValue > MaximumElevation)
+                            {
+                                MaximumElevation = currentValue;
 
-                            MinElevationRow = currentRow;
-                            MinElevationCol = currentColumn;
+                                MaxElevationRow = currentRow;
+                                MaxElevationCol = currentColumn;
+                            }
+
+                            if (currentValue < MinimumElevation)
+                            {
+                                MinimumElevation = currentValue;
+
+                                MinElevationRow = currentRow;
+                                MinElevationCol = currentColumn;
+                            }
                         }
                     }
                 }
-
-                MinMaxFound = true;
             }
             else
             {
-                throw new Exception( "topo data not yet initialized" );
+                throw new System.InvalidOperationException( "Topo data not initialized." );
             }
         }
 
@@ -349,7 +368,7 @@ namespace FLTDataLib
              */
 
             // parallel scheme 2, no noticeable timing difference, both must be maxing out the cores
-            Parallel.For( 0, NumRows() * NumCols(), currentValueIndex =>
+            Parallel.For( 0, NumRows * NumCols, currentValueIndex =>
                 {
                     int    dataIndex = currentValueIndex * FLTDataLib.Constants.FLT_FLOAT_SIZE;
 

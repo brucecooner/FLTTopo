@@ -25,12 +25,13 @@ using FLTDataLib;
 
 /* TODO
  * 
+ * -make it do what it says
  * -usage page for no inputs
  * -echo (ignore?) unknown inputs
  * -add option for producing bitmap from new data
 */
 
-namespace FLTTopoExtractSubGrid
+namespace FLTTopoVSlice
 {
     class Program
     {
@@ -155,6 +156,7 @@ namespace FLTTopoExtractSubGrid
                                                     int startRow, int startCol, int endRow, int endCol,  
                                                     string  outFilesName )
         {
+            /*
             int newWidth = endRow - startRow + 1;
             int newHeight = endCol - startCol + 1;
 
@@ -185,13 +187,14 @@ namespace FLTTopoExtractSubGrid
             newDesc.NumberOfColumns = newWidth;
 
             newDesc.SaveToFile( outFilesName );
+             * */
         }
 
         // ---------------------------------------------------------------------------------------
-        // TODO : should be in library
+        // TODO : should be in library?
         static  void    TopoDataToBitmap( FLTDataLib.FLTTopoData    topoData, string fileBaseName )
         {
-            Bitmap bmp = new Bitmap(topoData.NumCols(), topoData.NumRows(), System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+            Bitmap bmp = new Bitmap(topoData.NumCols, topoData.NumRows, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
 
             topoData.FindMinMax();
 
@@ -199,10 +202,10 @@ namespace FLTTopoExtractSubGrid
             float oneOverRange = 1.0f / range;
 
             // generate grayscale bitmap from normalized topo data
-            for (int row = 0; row < topoData.NumRows(); ++row)
+            for (int row = 0; row < topoData.NumRows; ++row)
             {
                 System.Console.Write(".");
-                for (int col = 0; col < topoData.NumCols(); ++col)
+                for (int col = 0; col < topoData.NumCols; ++col)
                 {
                     float normalizedValue = (topoData.ValueAt(row, col) - topoData.MinimumElevation) * oneOverRange;
 
@@ -237,7 +240,7 @@ namespace FLTTopoExtractSubGrid
                 }
 
                 System.Console.WriteLine("Input files name : " + inputFileBaseName);
-                System.Console.WriteLine("Output files name : " + outputFileBaseName );
+                System.Console.WriteLine("Output file name : " + outputFileBaseName );
                 System.Console.WriteLine("Grid Start : " + startRow + "," + startCol );
                 System.Console.WriteLine("Grid End : " + endRow + "," + endCol );
                 System.Console.WriteLine( "- - - - - - - - - - -" );

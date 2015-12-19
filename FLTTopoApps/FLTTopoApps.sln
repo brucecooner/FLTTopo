@@ -3,13 +3,12 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Express 2012 for Windows Desktop
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FLTDataLib", "..\FLTDataLib\FLTDataLib.csproj", "{4174D244-965A-4F70-838F-7185063F1335}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FLTTopoQuantize", "FLTTopoQuantize\FLTTopoQuantize.csproj", "{C718CA6D-8AB1-4321-A68B-6F53116A06BE}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FLTTopoToImage", "FLTTopoToImage\FLTTopoToImage.csproj", "{03586417-238E-421B-8033-4CE7F69E4DBF}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FLTTopoExtractSubGrid", "FLTTopoExtractSubGrid\FLTTopoExtractSubGrid.csproj", "{8D68110F-DED1-4346-A4D8-BC814BCF18EB}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FLTTopoContour", "FLTTopoContour\FLTTopoContour.csproj", "{DF18B93A-27A5-412B-A39F-5C1C56087BFB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FLTTopoVSlice", "FLTTopoVSlice\FLTTopoVSlice.csproj", "{EAF2D648-6668-4DDF-B6C3-026C76AABD3D}"
+	ProjectSection(ProjectDependencies) = postProject
+		{4174D244-965A-4F70-838F-7185063F1335} = {4174D244-965A-4F70-838F-7185063F1335}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,22 +20,14 @@ Global
 		{4174D244-965A-4F70-838F-7185063F1335}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4174D244-965A-4F70-838F-7185063F1335}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4174D244-965A-4F70-838F-7185063F1335}.Release|Any CPU.Build.0 = Release|Any CPU
-		{C718CA6D-8AB1-4321-A68B-6F53116A06BE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{C718CA6D-8AB1-4321-A68B-6F53116A06BE}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{C718CA6D-8AB1-4321-A68B-6F53116A06BE}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{C718CA6D-8AB1-4321-A68B-6F53116A06BE}.Release|Any CPU.Build.0 = Release|Any CPU
-		{03586417-238E-421B-8033-4CE7F69E4DBF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{03586417-238E-421B-8033-4CE7F69E4DBF}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{03586417-238E-421B-8033-4CE7F69E4DBF}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{03586417-238E-421B-8033-4CE7F69E4DBF}.Release|Any CPU.Build.0 = Release|Any CPU
-		{8D68110F-DED1-4346-A4D8-BC814BCF18EB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{8D68110F-DED1-4346-A4D8-BC814BCF18EB}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{8D68110F-DED1-4346-A4D8-BC814BCF18EB}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{8D68110F-DED1-4346-A4D8-BC814BCF18EB}.Release|Any CPU.Build.0 = Release|Any CPU
 		{DF18B93A-27A5-412B-A39F-5C1C56087BFB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{DF18B93A-27A5-412B-A39F-5C1C56087BFB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DF18B93A-27A5-412B-A39F-5C1C56087BFB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DF18B93A-27A5-412B-A39F-5C1C56087BFB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EAF2D648-6668-4DDF-B6C3-026C76AABD3D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EAF2D648-6668-4DDF-B6C3-026C76AABD3D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EAF2D648-6668-4DDF-B6C3-026C76AABD3D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EAF2D648-6668-4DDF-B6C3-026C76AABD3D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

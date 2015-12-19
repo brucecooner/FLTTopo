@@ -223,17 +223,18 @@ namespace FLTDataLib
         public  float MinimumElevation;
 
         // coordinates of max,min
-        public  int MaxElevationRow { get; private set; }
-        public  int MaxElevationCol { get; private set; }
+        public  int MaxElevationRow;
+        public  int MaxElevationCol;
 
-        public  int MinElevationRow { get; private set; }
-        public  int MinElevationCol { get; private set; }
+        public  int MinElevationRow;
+        public  int MinElevationCol;
 
         // -------------------------------------------------------------------------------------------
         // returns minimum and maximum elevation values in specified rect
         // note : out of order coordinates will be reversed
-        // detects previously discovered min/max
-        public void FindMinMaxInRect(int x1, int y1, int x2, int y2, ref float min, ref float max )
+        public void FindMinMaxInRect(   int x1, int y1, int x2, int y2, 
+                                        ref float min, ref int minRow, ref int minColumn,
+                                        ref float max, ref int maxRow, ref int maxColumn )
         {
             // validation urrrrrrgh
             if (!IsInitialized())
@@ -278,11 +279,15 @@ namespace FLTDataLib
                     if ( currentValue > max )
                     {
                         max = currentValue;
+                        maxRow = currentRow;
+                        maxColumn = currentColumn;
                     }
 
                     if (currentValue < min)
                     {
                         min = currentValue;
+                        minRow = currentRow;
+                        minColumn = currentColumn;
                     }
                 }
             }
@@ -290,46 +295,16 @@ namespace FLTDataLib
 
         // -------------------------------------------------------------------------------------------
         // finds min/max in entire map, skips if already found unless forceSearch is true
-        // note : records locations of min/max elevations
-        public void FindMinMax( Boolean forceSearch = false )
+        // note : -records locations of min/max elevations
+        // -detects previously discovered min/max
+        public void FindMinMax(Boolean forceSearch = false)
         {
-            if ( IsInitialized() )
+            if ( false == MinMaxFound || forceSearch )
             {
-                if ( false == MinMaxFound || forceSearch )
-                {
-                    MaximumElevation = float.MinValue;
-                    MinimumElevation = float.MaxValue;
-
-                    for (int currentRow = 0; currentRow < Descriptor.NumberOfRows; ++currentRow )
-                    {
-                        for (int currentColumn = 0; currentColumn < Descriptor.NumberOfColumns; ++currentColumn)
-                        {
-                            int startIndex = FLTDataLib.Constants.FLT_FLOAT_SIZE * ((currentRow * Descriptor.NumberOfColumns) + currentColumn);
-
-                            float currentValue = System.BitConverter.ToSingle( topoDataByteArray, startIndex );
-
-                            if (currentValue > MaximumElevation)
-                            {
-                                MaximumElevation = currentValue;
-
-                                MaxElevationRow = currentRow;
-                                MaxElevationCol = currentColumn;
-                            }
-
-                            if (currentValue < MinimumElevation)
-                            {
-                                MinimumElevation = currentValue;
-
-                                MinElevationRow = currentRow;
-                                MinElevationCol = currentColumn;
-                            }
-                        }
-                    }
-                }
-            }
-            else
-            {
-                throw new System.InvalidOperationException( "Topo data not initialized." );
+                FindMinMaxInRect(   0, 0, NumRows, NumCols, 
+                                    ref MinimumElevation, ref MinElevationRow, ref MinElevationCol,
+                                    ref MaximumElevation, ref MaxElevationRow, ref MaxElevationCol );
+                MinMaxFound = true;
             }
         }
 

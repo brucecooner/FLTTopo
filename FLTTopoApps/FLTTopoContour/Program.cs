@@ -35,14 +35,15 @@ using FLTDataLib;
     -suppress output option?
     -is my capitalization all over the place?
     -add program note explaining that top must be < bottom, not greater, and why!
-    -return error codes from Main
+    -return error codes from Main?
+    -allow data report to work with rect option(s)
  * */
 
 namespace FLTTopoContour
 {
     class Program
     {
-        const float versionNumber = 1.3f;
+        const float versionNumber = 1.4f;
 
         // TYPES
         // different options the user specifies
@@ -149,6 +150,7 @@ namespace FLTTopoContour
         // maps output modes onto their specifiers
         static Dictionary< OutputModeType, OptionSpecifier > outputModeToSpecifierDict;
 
+        // ---- SETTINGS ----
         static String inputFileBaseName = "";
         static String outputFileName = "";
 
@@ -244,6 +246,7 @@ namespace FLTTopoContour
         }
 
         // ------------------------------------------------------
+        // TODO : move to library so apps can all share
         // converts hex triplet to 32 bit pixel (note : does NOT expect 0x prefix on string)
         static private Int32 parseColorHexTriplet( String input, ref Boolean parsed, ref String parseErrorString )
         {
@@ -304,6 +307,7 @@ namespace FLTTopoContour
 
         // ------------------------------------------------------
         // generalized color parsing
+        // TODO : move to library so apps can share
         static private Boolean parseColor( String input, String colorDescription, ref String parseErrorString, ref Int32 colorOut, ref String colorStringOut )
         {
             Boolean parsed = true;
@@ -477,7 +481,6 @@ namespace FLTTopoContour
 
             if ( 4 != coordinates.Length )
             {
-                // TODO : test
                 parseErrorString = "Expected 4 coordinates, got " + coordinates.Length.ToString();
                 parsed = false;
             }
@@ -724,7 +727,35 @@ namespace FLTTopoContour
         }
 
         // -------------------------------------------------------------------------------------
-        static private void reportOptionValues()
+        static private void reportRectExtents()
+        {
+            if (rectIndicesSpecified)
+            {
+                if (rectCoordinatesSpecified)
+                {
+                    Console.WriteLine("Rect indices ignored.");
+                }
+                else
+                {
+                    Console.WriteLine("Rect Indices : ");
+                    Console.WriteLine("   Left:" + rectLeftIndex + ", Top:" + rectTopIndex + ", Right:" + rectRightIndex + ", Bottom:" + rectBottomIndex);
+                }
+            }
+            else if (rectCoordinatesSpecified)
+            {
+                // TODO : this assumes we're working in the western half of the northern hemisphere, need function to convert lat/long to nsew correctly.
+                Console.WriteLine("Rect Coordinates : ");
+                Console.WriteLine(" " + WestString + ":" + rectWestLongitude + WestChar + ", " + NorthString + ":" + rectNorthLatitude + NorthChar);
+                Console.WriteLine(" " + EastString + ":" + rectEastLongitude + WestChar + ", " + SouthString + ":" + rectSouthLatitude + NorthChar);
+            }
+            else
+            {
+                Console.WriteLine( "No rect specified, defaulting to entire map." );
+            }
+        }
+
+        // -------------------------------------------------------------------------------------
+        static private void reportSettingsValues()
         {
             Console.WriteLine(ConsoleSectionSeparator);
 
@@ -767,26 +798,7 @@ namespace FLTTopoContour
                     Console.WriteLine(optionTypeToSpecDict[OptionType.GradientHiColor].Description + " : " + gradientHiColorString);
                 }
 
-                if ( rectCoordinatesSpecified )
-                {
-                    // TODO : this assumes we're working in the western half of the northern hemisphere, need function to convert lat/long to nsew correctly.
-                    Console.WriteLine( "Rect Coordinates : " );
-                    Console.WriteLine( " " + WestString + ":" + rectWestLongitude + WestChar + ", " + NorthString + ":" + rectNorthLatitude + NorthChar );
-                    Console.WriteLine( " " + EastString + ":" + rectEastLongitude + WestChar + ", " + SouthString + ":" + rectSouthLatitude + NorthChar );
-                }
-
-                if ( rectIndicesSpecified )
-                {
-                    if ( rectCoordinatesSpecified )
-                    {
-                        Console.WriteLine("Rect indices ignored.");
-                    }
-                    else
-                    {
-                        Console.WriteLine( "Rect Indices : " );
-                        Console.WriteLine( "   Left:" + rectLeftIndex + ", Top:" + rectTopIndex + ", Right:" + rectRightIndex + ", Bottom:" + rectBottomIndex );
-                    }
-                }
+                reportRectExtents();
             }
         }
 
@@ -852,8 +864,14 @@ namespace FLTTopoContour
             // note that this finds the min/max of the quantized data, so will not be the true heights, but that's important to accurately calculating
             // the range
             float minElevationInRect = 0;
+            int minElevationRow = 0, minElevationColumn = 0;
+
             float maxElevationInRect = 0;
-            topoData.FindMinMaxInRect( rectLeftIndex, rectTopIndex, rectRightIndex, rectBottomIndex, ref minElevationInRect, ref maxElevationInRect );
+            int maxElevationRow = 0, maxElevationColumn = 0;
+
+            topoData.FindMinMaxInRect(  rectLeftIndex, rectTopIndex, rectRightIndex, rectBottomIndex, 
+                                        ref minElevationInRect, ref minElevationRow, ref minElevationColumn,
+                                        ref maxElevationInRect, ref maxElevationRow, ref maxElevationColumn );
 
             float range = maxElevationInRect - minElevationInRect; //topoData.MaximumElevation - topoData.MinimumElevation;
             float oneOverRange = 1.0f / range;
@@ -1211,6 +1229,26 @@ namespace FLTTopoContour
         {
             String indent = "  ";
 
+            // note : works with rect spec
+            Console.WriteLine("Finding min/max");
+            float minElevationInRect = 0;
+            int minElevationRow = 0, minElevationColumn = 0;
+
+            float maxElevationInRect = 0;
+            int maxElevationRow = 0, maxElevationColumn = 0;
+
+            data.FindMinMaxInRect(  rectLeftIndex, rectTopIndex, rectRightIndex, rectBottomIndex,
+                                    ref minElevationInRect, ref minElevationRow, ref minElevationColumn,
+                                    ref maxElevationInRect, ref maxElevationRow, ref maxElevationColumn);
+
+            Console.WriteLine(ConsoleSectionSeparator);
+            Console.WriteLine(indent + "Descriptor fields:");
+            var descriptorValues = data.Descriptor.GetValueStrings();
+            foreach (var valStr in descriptorValues)
+            {
+                Console.WriteLine(indent + indent + valStr);
+            }
+
             Console.WriteLine( ConsoleSectionSeparator );
             Console.WriteLine( "Data report :" );
             Console.WriteLine( indent + "Map extents:" );
@@ -1222,20 +1260,18 @@ namespace FLTTopoContour
             Console.WriteLine( indent + indent + EastString + "/" + WestString + " : " + data.Descriptor.WidthDegrees );
             Console.WriteLine( indent + indent + NorthString + "/" + SouthString + " : " + data.Descriptor.WidthDegrees);
 
+            // show rect extents
+            Console.WriteLine(ConsoleSectionSeparator);
             // min/max report
-            Console.WriteLine( indent + "Minimum elevation : " + data.MinimumElevation );
+            reportRectExtents();
+            Console.WriteLine();
+            Console.WriteLine(indent + "Minimum elevation : " + minElevationInRect);
             // note : this assumes in northern/western hemisphere
-            Console.WriteLine( indent + indent + "Found at " + data.Descriptor.RowIndexToLatitude( data.MinElevationRow ) + NorthChar + "," + data.Descriptor.ColumnIndexToLongitude( data.MinElevationCol ) + WestChar );
-            Console.WriteLine( indent + "Maximum elevation : " + data.MaximumElevation );
-            Console.WriteLine( indent + indent + "Found at " + data.Descriptor.RowIndexToLatitude( data.MaxElevationRow ) + NorthChar + "," + data.Descriptor.ColumnIndexToLongitude( data.MaxElevationCol ) + WestChar );
+            Console.WriteLine( indent + indent + "Found at " + data.Descriptor.RowIndexToLatitude( minElevationRow ) + NorthChar + "," + data.Descriptor.ColumnIndexToLongitude( minElevationColumn ) + WestChar );
+            Console.WriteLine( indent + "Maximum elevation : " + maxElevationInRect );
+            Console.WriteLine( indent + indent + "Found at " + data.Descriptor.RowIndexToLatitude( maxElevationRow ) + NorthChar + "," + data.Descriptor.ColumnIndexToLongitude( maxElevationColumn ) + WestChar );
 
             Console.WriteLine();
-            Console.WriteLine( indent + "Descriptor fields:" );
-            var descriptorValues = data.Descriptor.GetValueStrings();
-            foreach( var valStr in descriptorValues )
-            {
-                Console.WriteLine( indent + indent + valStr );
-            }
         }
 
         // -------------------------------------------------------------------------------------------------------------------
@@ -1276,7 +1312,7 @@ namespace FLTTopoContour
                 }
 
                 // report current options
-                reportOptionValues();
+                reportSettingsValues();
 
                 System.Console.WriteLine( ConsoleSectionSeparator );
 
@@ -1290,42 +1326,32 @@ namespace FLTTopoContour
                     return; 
                 }
 
+                // ---- validate rect options ----
+                try
+                {
+                    Boolean rectValidated = handleRectOptions(topoData);
+
+                    if (false == rectValidated)
+                    {
+                        return; // TODO : error code?
+                    }
+                }
+                catch { return; }
+
+                // ---- read data ----
+                try
+                {
+                    readData(topoData, inputFileBaseName);
+                }
+                catch { return; }
+
                 // ---- data report ----
                 if ( dataReportOnly )
                 {
-                    // ---- read data ----
-                    try
-                    {
-                        readData( topoData, inputFileBaseName );
-                    }
-                    catch { return; }
-
-                    Console.WriteLine( "Finding min/max..." );
-                    topoData.FindMinMax();
-
                     dataReport( topoData );
                 }
                 else
                 {
-                    // ---- validate rect options ----
-                    try
-                    {
-                        Boolean rectValidated = handleRectOptions( topoData );
-
-                        if (false == rectValidated)
-                        {
-                            return; // TODO : error code?
-                        }
-                    }
-                    catch { return; }
-
-                    // ---- read data ----
-                    try
-                    {
-                        readData( topoData, inputFileBaseName );
-                    }
-                    catch { return; }
-
                     System.Console.WriteLine( ConsoleSectionSeparator );
 
                     // ---- quantize data ----

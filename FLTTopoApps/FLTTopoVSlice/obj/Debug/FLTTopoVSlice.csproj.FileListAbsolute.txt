@@ -1,0 +1,8 @@
+C:\Users\Spazter\Documents\GitHub\FLTTopo\FLTTopoApps\FLTTopoVSlice\bin\Debug\FLTTopoVSlice.exe.config
+C:\Users\Spazter\Documents\GitHub\FLTTopo\FLTTopoApps\FLTTopoVSlice\bin\Debug\FLTTopoVSlice.exe
+C:\Users\Spazter\Documents\GitHub\FLTTopo\FLTTopoApps\FLTTopoVSlice\bin\Debug\FLTTopoVSlice.pdb
+C:\Users\Spazter\Documents\GitHub\FLTTopo\FLTTopoApps\FLTTopoVSlice\bin\Debug\FLTDataLib.dll
+C:\Users\Spazter\Documents\GitHub\FLTTopo\FLTTopoApps\FLTTopoVSlice\bin\Debug\FLTDataLib.pdb
+C:\Users\Spazter\Documents\GitHub\FLTTopo\FLTTopoApps\FLTTopoVSlice\obj\Debug\FLTTopoVSlice.exe
+C:\Users\Spazter\Documents\GitHub\FLTTopo\FLTTopoApps\FLTTopoVSlice\obj\Debug\FLTTopoVSlice.pdb
+C:\Users\Spazter\Documents\GitHub\FLTTopo\FLTTopoApps\FLTTopoVSlice\obj\Debug\FLTTopoVSlice.csprojResolveAssemblyReference.cache

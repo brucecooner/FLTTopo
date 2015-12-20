@@ -29,14 +29,14 @@ using FLTDataLib;
 
 /*
  *  TODO :
- *  -file overwrite confirmation
+ *  -file overwrite avoidance or confirmation
     -'slice' modes (horizontal and vertical)
     -config file?
     -suppress output option?
     -is my capitalization all over the place?
     -add program note explaining that top must be < bottom, not greater, and why!
     -return error codes from Main?
-    -allow data report to work with rect option(s)
+    - add 'mark coordinates' option ?
  * */
 
 namespace FLTTopoContour
@@ -68,9 +68,10 @@ namespace FLTTopoContour
         // different types of contour maps the app can produce
         enum OutputModeType
         {
-            Normal          = 'n',    // regular-like topo map, contour lines every contourHeights feet
-            Alternating     = 'a',    // alternating contour lines are made in alternating colors
-            Gradient        = 'g'     // image rendered with color gradient from lowest point (Color1) to highest point (Color2) at contourHeights steps
+            Normal              = 'n',    // regular-like topo map, contour lines every contourHeights feet
+            Alternating         = 'a',    // alternating contour lines are made in alternating colors
+            Gradient            = 'g',    // image rendered with color gradient from lowest point (Color1) to highest point (Color2) at contourHeights steps
+            //SeparateMaps        = 'h'     // normal mode, but each contour height gets its own bitmap
         }
 
         delegate Boolean ParseOptionDelegate( String input, ref String parseErrorString );
@@ -158,7 +159,7 @@ namespace FLTTopoContour
 
         static OutputModeType outputMode = DefaultOutputMode;
 
-        static Int32 contourHeights = DefaultContourHeights;
+        static int contourHeights = DefaultContourHeights;
 
         static  Boolean reportTimings = false;
 
@@ -192,7 +193,7 @@ namespace FLTTopoContour
         static float rectSouthLatitude;
         static float rectEastLongitude;
 
-        // output sub-rect (cannot apply immediate default, must wait until data loaded)
+        // output sub-rect 
         static Boolean rectIndicesSpecified = false;
         static Int32 rectTopIndex;
         static Int32 rectLeftIndex;
@@ -201,6 +202,25 @@ namespace FLTTopoContour
 
         // list of single line operating notes
         static List<String> programNotes = null;
+
+        // ---- timing ----
+        // timing logs
+        static List<Tuple<String, float>> timingLog = new List<Tuple<String, float>>(20);
+
+        static void addTiming( String timingEntryName, float timingEntryValueMS )
+        { timingLog.Add( Tuple.Create<String,float>( timingEntryName, timingEntryValueMS / 1000.0f ) ); }
+
+        static void PrintTimings()
+        {
+            String indent = "  ";
+
+            Console.WriteLine( ConsoleSectionSeparator );
+            Console.WriteLine( "Timings:" );
+            foreach( var entry in timingLog )
+            {
+                Console.WriteLine( indent + entry.Item1 + " took " + entry.Item2 + " seconds." );
+            }
+        }
 
         // ---- parse delegates ----
         // ------------------------------------------------------
@@ -528,15 +548,20 @@ namespace FLTTopoContour
 
             // not crazy about these casts, will see how it works in practice
             // TODO : more descriptive help text?
-            outputModeToSpecifierDict.Add( OutputModeType.Normal,        new OptionSpecifier {  Specifier = ((char)OutputModeType.Normal).ToString(),      
+            outputModeToSpecifierDict.Add( OutputModeType.Normal,       new OptionSpecifier {   Specifier = ((char)OutputModeType.Normal).ToString(),      
                                                                                                 Description = "Normal",
                                                                                                 HelpText = "Normal contour map" });
-            outputModeToSpecifierDict.Add( OutputModeType.Gradient,      new OptionSpecifier {  Specifier = ((char)OutputModeType.Gradient).ToString(),    
+            outputModeToSpecifierDict.Add( OutputModeType.Gradient,     new OptionSpecifier {   Specifier = ((char)OutputModeType.Gradient).ToString(),    
                                                                                                 Description = "Gradient",
                                                                                                 HelpText = "Gradient of colors between lowest and highest elevations on map" });
-            outputModeToSpecifierDict.Add( OutputModeType.Alternating,   new OptionSpecifier {  Specifier = ((char)OutputModeType.Alternating).ToString(), 
+            outputModeToSpecifierDict.Add( OutputModeType.Alternating,  new OptionSpecifier {   Specifier = ((char)OutputModeType.Alternating).ToString(), 
                                                                                                 Description = "Alternating",
                                                                                                 HelpText = "Contour line colors alternate between altcolor1 and altcolor2" } );
+            /*
+            outputModeToSpecifierDict.Add( OutputModeType.SeparateMaps, new OptionSpecifier {   Specifier = ((char)OutputModeType.SeparateMaps).ToString(),
+                                                                                                Description = "Separate Maps",
+                                                                                                HelpText = "Like normal mode, but each contour height is on a separate image." } );
+            */
 
             optionTypeToSpecDict = new Dictionary< OptionType, OptionSpecifier>( Enum.GetNames(typeof(OptionType)).Length );
 
@@ -802,320 +827,6 @@ namespace FLTTopoContour
             }
         }
 
-        // ------------------------------------------------------------------------------------
-        // returns how many pixels will be in output image (does not account for pixel size)
-        static private int outputImagePixelCount()
-        {
-            //int testsize = ( rectRightIndex - rectLeftIndex + 1 ) * ( rectBottomIndex - rectTopIndex + 1 );
-
-            return ( rectRightIndex - rectLeftIndex + 1 ) * ( rectBottomIndex - rectTopIndex + 1 );
-        }
-
-        // --------------------------------------------------------------------------------
-        static private int outputImageWidth()
-        {
-             return rectRightIndex - rectLeftIndex + 1;
-        }
-
-        // --------------------------------------------------------------------------------
-        static private int outputImageHeight()
-        {
-            return rectBottomIndex - rectTopIndex + 1;
-        }
-
-        static  int lowRed;
-        static  int lowGreen;
-        static  int lowBlue;
-
-        static  int highRed;
-        static  int highGreen;
-        static  int highBlue;
-
-        static  int redRange;
-        static  int greenRange;
-        static  int blueRange;
-
-        static  private Int32     normalizedHeightToColor( float height )
-        {
-            byte    redValue = (byte)(lowRed + ( height * redRange ) );
-            byte    greenValue = (byte)(lowGreen + ( height * greenRange ) );
-            byte    blueValue = (byte)(lowBlue + ( height * blueRange ) );
-
-            return  (Int32)(((byte)0xFF << 24) | (redValue << 16) | (greenValue << 8) | blueValue);
-        }
-
-        // -------------------------------------------------------------------------------------------------------------------
-        // TODO : separate image type/creation/system specific code from color map/pixels creation
-        static  private void    topoToGradientBitmap( FLTTopoData   topoData, String fileName )
-        {
-            // get gradient colors
-            lowRed = (gradientLoColor >> 16) & 0xFF;
-            lowGreen = (gradientLoColor >> 8) & 0xFF;
-            lowBlue = gradientLoColor & 0xFF;
-
-            highRed = (gradientHiColor >> 16) & 0xFF;
-            highGreen = (gradientHiColor >> 8) & 0xFF;
-            highBlue = gradientHiColor & 0xFF;
-
-            redRange = highRed - lowRed;
-            greenRange = highGreen - lowGreen;
-            blueRange = highBlue - lowBlue;
-                        
-            // note that this finds the min/max of the quantized data, so will not be the true heights, but that's important to accurately calculating
-            // the range
-            float minElevationInRect = 0;
-            int minElevationRow = 0, minElevationColumn = 0;
-
-            float maxElevationInRect = 0;
-            int maxElevationRow = 0, maxElevationColumn = 0;
-
-            topoData.FindMinMaxInRect(  rectLeftIndex, rectTopIndex, rectRightIndex, rectBottomIndex, 
-                                        ref minElevationInRect, ref minElevationRow, ref minElevationColumn,
-                                        ref maxElevationInRect, ref maxElevationRow, ref maxElevationColumn );
-
-            float range = maxElevationInRect - minElevationInRect; //topoData.MaximumElevation - topoData.MinimumElevation;
-            float oneOverRange = 1.0f / range;
-
-            Bitmap bmp = new Bitmap( outputImageWidth(), outputImageHeight(), System.Drawing.Imaging.PixelFormat.Format32bppRgb );
-
-            Int32[] pixels = new Int32[ outputImagePixelCount() ];
-
-            // generate grayscale bitmap from normalized topo data
-            // note : looping in TOPO MAP SPACE
-            //for (int row = 0; row < topoData.NumRows; ++row)
-            Parallel.For ( rectTopIndex, rectTopIndex + outputImageHeight() - 1, row =>      // I think the "to" here should be + 1 the upper bound, docs say it is Exclusive
-            {
-                // compute offset of this row in OUTPUT IMAGE SPACE
-                int offset = (row - rectTopIndex) * outputImageWidth();
-
-                //for (int col = 0; col < topoData.NumCols; ++col)
-                for (int col = rectLeftIndex; col <= rectRightIndex; ++col)
-                {
-                    float normalizedValue = (topoData.ValueAt( row, col ) - minElevationInRect) * oneOverRange;
-
-                    //bmp.SetPixel(col, row, Color.FromArgb(argb)); // seem to remember this being painfully slow
-                    pixels[ offset ] = normalizedHeightToColor( normalizedValue );// argb;
-                    ++offset;
-                }  
-            //}   // end for row
-            } );    // end parallel.for row
-
-            System.Runtime.InteropServices.GCHandle handle = System.Runtime.InteropServices.GCHandle.Alloc(pixels, System.Runtime.InteropServices.GCHandleType.Pinned);
-            try
-            {
-                IntPtr pointer = handle.AddrOfPinnedObject();
-
-                //Lock all pixels
-                System.Drawing.Imaging.BitmapData bmpData = bmp.LockBits(
-                           new Rectangle(0, 0, bmp.Width, bmp.Height ),
-                           System.Drawing.Imaging.ImageLockMode.WriteOnly, bmp.PixelFormat);
-
-                //set the beginning of pixel data
-                //bmpData.Scan0 = pointer;
-                //System.Runtime.InteropServices.Marshal.Copy(pixels, 0, bmpData.Scan0, topoData.NumCols * topoData.NumRows());
-                System.Runtime.InteropServices.Marshal.Copy(pixels, 0, bmpData.Scan0, outputImagePixelCount() );
-
-                //Unlock the pixels
-                bmp.UnlockBits(bmpData);
-            }
-            finally
-            {
-                if (handle.IsAllocated)
-                {
-                    handle.Free();
-                }
-            }
-
-            // write out bitmap
-            bmp.Save( fileName + ".bmp");
-        }
-
-        // -------------------------------------------------------------------------------------------------------------------
-        // note : assumes topoData has been quantized by contourHeights
-        static private void topoToContourBitmap(FLTTopoData topoData, String fileName )
-        {
-            //Create an empty Bitmap of the expected size
-            Bitmap contourMap = new Bitmap( outputImageWidth(), outputImageHeight(), System.Drawing.Imaging.PixelFormat.Format32bppRgb);
-
-#if false
-            // normal, slow way
-            Int32 currentPixel = blackPixel;
-
-            // serial operation
-            for ( int row = 1; row < topoData.NumRows(); ++row )
-            {
-                for ( int col = 1; col < topoData.NumCols; ++col )
-                {
-                    float   currentValue = topoData.ValueAt( row, col );
-                    float   aboveValue = topoData.ValueAt( row - 1, col );
-                    float   leftValue = topoData.ValueAt( row, col - 1 );
-
-                    currentPixel = ( ( currentValue != leftValue ) || ( currentValue != aboveValue ) ) ? blackPixel : whitePixel;
-
-                    contourMap.SetPixel( col, row, Color.FromArgb( currentPixel ) );
-                }
-            }
-#else
-            // need to use byte array for pixels
-            Int32[]     pixels = new Int32[ outputImagePixelCount() ];
-
-            // ------------------------------
-            // single pixel row computation (alternating color of odd/even contours)
-            Func<int, int> ComputePixelRowAlternatingColorContours = (row) =>
-            {
-                float leftValue = topoData.ValueAt(row, 0);
-                // index to first pixel in row
-                int currentPixelIndex = ( row - rectTopIndex ) * outputImageWidth();
-
-                Int32 currentPixel = backgroundColor;
-
-                // note : looping in topo map space
-                for (int col = rectLeftIndex; col <= rectRightIndex; ++col)
-                {
-                    float aboveValue = topoData.ValueAt(row - 1, col);
-                    float currentValue = topoData.ValueAt(row, col);
-
-                    bool drawCurrent = ((currentValue != leftValue) || (currentValue != aboveValue)) ? true : false;
-
-                    float highestValue = currentValue;
-
-                    if (aboveValue > highestValue)
-                    {
-                        highestValue = aboveValue;
-                    }
-                    if (leftValue > highestValue)
-                    {
-                        highestValue = leftValue;
-                    }
-
-                    if (drawCurrent)
-                    {
-                        currentPixel = backgroundColor;
-
-                        Int32 evenOdd = Convert.ToInt32(highestValue / contourHeights % 2);
-
-                        if (evenOdd <= 0)
-                        {
-                            currentPixel = alternatingContourColor1;
-                        }
-                        else
-                        {
-                            currentPixel = alternatingContourColor2;
-                        }
-                    }
-                    else
-                    {
-                        currentPixel = backgroundColor; 
-                    }
-
-                    pixels[currentPixelIndex] = currentPixel;
-
-                    ++currentPixelIndex;
-                    leftValue = currentValue;
-                }
-
-                return row;
-            };
-
-            // ------------------------------
-            // single pixel row computation (all contours same color)
-            Func<int, int>ComputePixelRowSingleColorContours = ( row ) =>
-            {
-                float   leftValue = topoData.ValueAt( row, rectLeftIndex );
-
-                // index to first pixel in row (in image space)
-                int     currentPixelIndex = (row - rectTopIndex) * outputImageWidth();   
-
-                Int32   currentPixel = backgroundColor;
-
-                for ( int col = rectLeftIndex; col <= rectRightIndex; ++col ) // note : moving in topo space
-                {
-                    float   aboveValue = topoData.ValueAt( row - 1, col );
-                    float   currentValue = topoData.ValueAt( row, col );
-
-                    currentPixel = ((currentValue != leftValue) || (currentValue != aboveValue)) ? contourColor : backgroundColor;
-
-                    pixels[ currentPixelIndex ] = currentPixel;
-
-                    ++currentPixelIndex;
-                    leftValue = currentValue;
-                }
-
-                return row;
-            };
-            // -----------------------------
-            System.Console.WriteLine( "Computing pixel rows" );
-
-
-            // TODO : sort out the '+1' on the start row. They're there because the compute functions acccess currentRow-1, so you cannot start
-            // at row zero. So row zero of the bitmap is blank. Can ignore the +1 if rectTop is >0, otherwise fill the bitmap row 0 or something.
-            if ( OutputModeType.Alternating == outputMode )
-            {
-                Parallel.For( rectTopIndex + 1, rectBottomIndex, row =>
-                {
-                    ComputePixelRowAlternatingColorContours( row );
-                } );
-            }
-            else
-            {
-                Parallel.For( rectTopIndex + 1, rectBottomIndex, row =>
-                {
-                    ComputePixelRowSingleColorContours( row );
-                } );
-            }
-
-            // ------------------------------
-            // create bitmap
-            /*
-            // straightforward, and slow
-            int x;
-            int y;
-            // init first row to all white (could do detection here too, but will skip for now)
-            for ( x = 0; x < topoData.NumCols; ++x )
-            {
-                contourMap.SetPixel( x, 0, Color.FromArgb( whitePixel ) );
-            }
-
-            for ( y = 0; y < topoData.NumRows; ++y )
-            {
-                for ( x = 0; x < topoData.NumCols; ++x )
-                {
-                    contourMap.SetPixel( x, y, Color.FromArgb( pixels[ y, x ] ) );
-                }
-            }
-            */
-
-            System.Console.WriteLine("Creating bitmap");
-
-            System.Runtime.InteropServices.GCHandle handle = System.Runtime.InteropServices.GCHandle.Alloc( pixels, System.Runtime.InteropServices.GCHandleType.Pinned);
-            try
-            {
-                IntPtr pointer = handle.AddrOfPinnedObject();
-
-                //Lock all pixels
-                System.Drawing.Imaging.BitmapData bmpData = contourMap.LockBits(
-                           //new Rectangle(0, 0, topoData.NumCols, topoData.NumRows),
-                           new Rectangle( 0, 0, outputImageWidth(), outputImageHeight()),
-                           System.Drawing.Imaging.ImageLockMode.WriteOnly, contourMap.PixelFormat);
-
-                // copy pixels into bitmap
-                System.Runtime.InteropServices.Marshal.Copy( pixels, 0, bmpData.Scan0, outputImageWidth() * outputImageHeight() );
-
-                //Unlock the pixels
-                contourMap.UnlockBits(bmpData);
-            }
-            finally
-            {
-                if (handle.IsAllocated)
-                {
-                    handle.Free();
-                }
-            }
-#endif
-            // write out bitmap
-            contourMap.Save( fileName + ".bmp" );
-        }
-
         // -------------------------------------------------------------------------------------------------------------------
         static private void readDescriptor( FLTTopoData data, String inputFileBaseName )
         {
@@ -1146,10 +857,8 @@ namespace FLTTopoContour
             }
 
             stopwatch.Stop();
-            if (reportTimings)
-            {
-                System.Console.WriteLine("Data read took " + (stopwatch.ElapsedMilliseconds / 1000.0f) + " seconds.");
-            }
+
+            addTiming( "data read", stopwatch.ElapsedMilliseconds );
         }
 
         // -------------------------------------------------------------------------------------------------------------------
@@ -1274,6 +983,38 @@ namespace FLTTopoContour
             Console.WriteLine();
         }
 
+        // ----------------------------------------------------------------------------------------------------------------------
+        static TopoMapGenerator generatorFactory( OutputModeType outputMode, int contourHeights, FLTTopoData data, String outputFilename, int[] rectExtents )
+        {
+            TopoMapGenerator generator = null;
+
+            switch ( outputMode )
+            {
+                case OutputModeType.Normal :
+                    generator = new NormalTopoMapGenerator( data, contourHeights, outputFilename, rectExtents );
+                    generator.setColor( NormalTopoMapGenerator.BackgroundColorKey, backgroundColor );
+                    generator.setColor( NormalTopoMapGenerator.ContourLineColorKey, contourColor );
+                    break;
+                case OutputModeType.Gradient :
+                    generator = new GradientTopoMapGenerator(data, contourHeights, outputFilename, rectExtents);
+                    generator.setColor(GradientTopoMapGenerator.LowColorKey, gradientLoColor);
+                    generator.setColor(GradientTopoMapGenerator.HighColorKey, gradientHiColor);
+                    break;
+                case OutputModeType.Alternating :
+                    generator = new AlternatingColorContourMapGenerator(data, contourHeights, outputFilename, rectExtents);
+                    generator.setColor( AlternatingColorContourMapGenerator.BackgroundColorKey, backgroundColor );
+                    generator.setColor( AlternatingColorContourMapGenerator.Color1Key, alternatingContourColor1 );
+                    generator.setColor( AlternatingColorContourMapGenerator.Color2Key, alternatingContourColor2 );
+                    break;
+                default :
+                    throw new System.InvalidOperationException( "unknown OutputModeType : " + outputMode.ToString() );
+            }
+
+            generator.addTimingHandler = addTiming;
+
+            return generator;
+        }
+
         // -------------------------------------------------------------------------------------------------------------------
         // -------------------------------------------------------------------------------------------------------------------
         static void Main(string[] args)
@@ -1285,7 +1026,6 @@ namespace FLTTopoContour
             FLTDataLib.FLTTopoData topoData = new FLTDataLib.FLTTopoData();
 
             System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
-            long    lastOperationTimingMS = 0;
 
             System.Console.WriteLine();
             System.Console.WriteLine( BannerMessage );
@@ -1345,72 +1085,33 @@ namespace FLTTopoContour
                 }
                 catch { return; }
 
-                // ---- data report ----
+                // ---- process ----
                 if ( dataReportOnly )
                 {
                     dataReport( topoData );
                 }
                 else
                 {
-                    System.Console.WriteLine( ConsoleSectionSeparator );
+                    // pack extents into array
+                    var rectExtents = new int[4];
+                    rectExtents[ TopoMapGenerator.RectLeftIndex ] = rectLeftIndex;
+                    rectExtents[ TopoMapGenerator.RectTopIndex ] = rectTopIndex;
+                    rectExtents[ TopoMapGenerator.RectRightIndex ] = rectRightIndex;
+                    rectExtents[ TopoMapGenerator.RectBottomIndex ] = rectBottomIndex;
 
-                    // ---- quantize data ----
-                    if ( contourHeights > 1 )
-                    {
-                        System.Console.WriteLine( "Quantizing topo data." );
+                    TopoMapGenerator generator = generatorFactory( outputMode, contourHeights, topoData, outputFileName, rectExtents );
 
-                        stopwatch.Reset();
-                        stopwatch.Start();
+                    System.Console.WriteLine(ConsoleSectionSeparator);
+                    System.Console.WriteLine("Creating map in " + generator.GetName() + " mode.");
 
-                        topoData.Quantize( contourHeights );
+                    generator.Generate();
 
-                        stopwatch.Stop();
-                        lastOperationTimingMS = stopwatch.ElapsedMilliseconds;
-                        if ( reportTimings )
-                        {
-                            System.Console.WriteLine( "Quantization took " + (lastOperationTimingMS / 1000.0f ) + " seconds." );
-                        }
-                    }
-
-                    // ---- produce output file ----
-                    // TODO : use delegates to clean this up
-                    System.Console.WriteLine( ConsoleSectionSeparator );
-                    if ( OutputModeType.Gradient == outputMode )
-                    {
-                        System.Console.WriteLine( "Creating bitmap." );
-
-                        stopwatch.Reset();
-                        stopwatch.Start();
-
-                        topoToGradientBitmap(topoData, outputFileName);
-
-                        stopwatch.Stop();
-                        lastOperationTimingMS = stopwatch.ElapsedMilliseconds;
-                        if (reportTimings)
-                        {
-                            System.Console.WriteLine("Creation took " + (lastOperationTimingMS / 1000.0f) + " seconds.");
-                            // took 145 seconds with 'large' grid
-                        }
-                    }
-                    else
-                    {
-                        // make contour map
-                        System.Console.WriteLine( "Creating contour map." );
-
-                        stopwatch.Reset();
-                        stopwatch.Start();
-
-                        topoToContourBitmap( topoData, outputFileName );
-
-                        stopwatch.Stop();
-                        lastOperationTimingMS = stopwatch.ElapsedMilliseconds;
-                        if (reportTimings)
-                        {
-                            System.Console.WriteLine("Contour map creation took " + (lastOperationTimingMS / 1000.0f) + " seconds.");
-                        }
-
-                    }
                 }   // end if !dataReportOnly
+
+                if ( reportTimings )
+                {
+                    PrintTimings();
+                }
 
                 System.Console.WriteLine();
             }   // end if args parsed successfully

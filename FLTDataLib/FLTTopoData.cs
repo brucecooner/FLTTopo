@@ -354,8 +354,7 @@ namespace FLTDataLib
                     byte[] floatBytes = System.BitConverter.GetBytes( currentQuantizedValue );
 
                     Array.Copy(floatBytes, 0, topoDataByteArray, dataIndex, sizeof(float));
-                }
-            );  // end Parallel.For currentValueIndex
+                } );  // end Parallel.For currentValueIndex
 #endif
         }
 

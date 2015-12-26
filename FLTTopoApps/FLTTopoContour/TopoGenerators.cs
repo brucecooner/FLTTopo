@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 
 using FLTDataLib;
@@ -13,6 +14,14 @@ namespace FLTTopoContour
     // base class
     public abstract class TopoMapGenerator
 	{
+        public enum MapType
+        {
+            Normal,
+            AlternatingColors,
+            Gradient,
+            HorizontalSlice
+        };
+
         // abstract to get name of generator
         public abstract String GetName();
 
@@ -23,6 +32,16 @@ namespace FLTTopoContour
 
         // note : derived classes can declare their color names according to need
         protected Dictionary<String, Int32> _colorsDict = new Dictionary<String, Int32>( 10 );
+
+        public enum colorType
+        {
+            concolor,
+            bgcolor,
+            altcolor1,
+            altcolor2,
+            gradlocolor,
+            gradhicolor
+        }
 
         // ---------------------------------------------------------
         public void setColor( String colorName, Int32 colorValue )
@@ -35,6 +54,46 @@ namespace FLTTopoContour
             {
                 _colorsDict.Add( colorName, colorValue );
             }
+        }
+
+        // ------------------------------------------------------
+        public void setColorsDict( Dictionary<String,Int32> newDict )
+        {
+            _colorsDict = newDict;
+        }
+
+        // color helpers
+        protected Int32 _backgroundColor    { get { return _colorsDict[colorType.bgcolor.ToString()]; } }
+        protected Int32 _contourLineColor   { get { return _colorsDict[colorType.concolor.ToString()]; } }
+        protected Int32 _color1             { get { return _colorsDict[colorType.altcolor1.ToString()]; } }
+        protected Int32 _color2             { get { return _colorsDict[colorType.altcolor2.ToString()]; } }
+        protected Int32 _lowColor           { get { return _colorsDict[colorType.gradlocolor.ToString()]; } }
+        protected Int32 _highColor          { get { return _colorsDict[colorType.gradhicolor.ToString()]; } }
+
+        // ---- factory function ----
+        public static TopoMapGenerator getGenerator(TopoMapGenerator.MapType type, int contourHeights, FLTTopoData data, String outputFilename, int[] rectExtents)
+        {
+            TopoMapGenerator generator = null;
+
+            switch ( type )
+            {
+                case MapType.Normal :
+                    generator = new NormalTopoMapGenerator(data, contourHeights, outputFilename, rectExtents);
+                    break;
+                case MapType.Gradient :
+                    generator = new GradientTopoMapGenerator(data, contourHeights, outputFilename, rectExtents);
+                    break;
+                case MapType.AlternatingColors :
+                    generator = new AlternatingColorContourMapGenerator(data, contourHeights, outputFilename, rectExtents);
+                    break;
+                case MapType.HorizontalSlice :
+                    generator = new HorizontalSlicesTopoMapGenerator(data, contourHeights, outputFilename, rectExtents);
+                    break;
+                default:
+                    throw new System.InvalidOperationException("unknown OutputModeType : " + type.ToString());
+            }
+
+            return generator;
         }
 
         // ---- output file(s) ----
@@ -131,6 +190,9 @@ namespace FLTTopoContour
             stopwatch.Reset();
             stopwatch.Start();
 
+            int width = outputImageWidth();
+            int height = outputImageHeight();
+
             Bitmap bmp = new Bitmap(outputImageWidth(), outputImageHeight(), System.Drawing.Imaging.PixelFormat.Format32bppRgb);
 
             System.Runtime.InteropServices.GCHandle handle = System.Runtime.InteropServices.GCHandle.Alloc(pixels, System.Runtime.InteropServices.GCHandleType.Pinned);
@@ -161,9 +223,11 @@ namespace FLTTopoContour
 
             // write out bitmap
             bmp.Save( outputFile + ".bmp");
+            bmp.Dispose();
 
             stopwatch.Stop();
-            addTiming( "save bitmap", stopwatch.ElapsedMilliseconds );
+            addTiming( "save bitmap: " + outputFile, stopwatch.ElapsedMilliseconds );
+
         }
 
         // ------------------------------------------------------------------------
@@ -175,13 +239,6 @@ namespace FLTTopoContour
     public class NormalTopoMapGenerator : TopoMapGenerator
     {
         public override String GetName() { return "normal"; }
-
-        public const String BackgroundColorKey = "backgroundColor";
-        public const String ContourLineColorKey = "contourColor";
-
-        // helpers
-        private Int32 backgroundColor   { get { return _colorsDict[ BackgroundColorKey ]; } }
-        private Int32 contourLineColor  { get { return _colorsDict[ ContourLineColorKey ]; } }
 
         public NormalTopoMapGenerator(  FLTTopoData data,
                                         int contourHeights,
@@ -234,14 +291,14 @@ namespace FLTTopoContour
                 // index to first pixel in row (in image space)
                 int     currentPixelIndex = (row - rectTop) * outputImageWidth();   
 
-                Int32   currentPixel = backgroundColor;
+                Int32   currentPixel = _backgroundColor;
 
                 for ( int col = rectLeft; col <= rectRight; ++col ) // note : moving in topo space
                 {
                     float   aboveValue = _data.ValueAt( row - 1, col );
                     float   currentValue = _data.ValueAt( row, col );
 
-                    currentPixel = ((currentValue != leftValue) || (currentValue != aboveValue)) ? contourLineColor : backgroundColor;
+                    currentPixel = ((currentValue != leftValue) || (currentValue != aboveValue)) ? _contourLineColor : _backgroundColor;
 
                     pixels[ currentPixelIndex ] = currentPixel;
 
@@ -265,22 +322,13 @@ namespace FLTTopoContour
             addTiming( "generating normal map", stopwatch.ElapsedMilliseconds );
 
             SaveBitmap( _outputFilename, pixels );
-        }
+        }   // end Generate()
     }
 
     // /////////////////////////////////////////////////////////////////////////////////////////////////////////
     public class AlternatingColorContourMapGenerator : TopoMapGenerator
     {
         public override String GetName() { return "alternating color"; }
-
-        public const String BackgroundColorKey = "backgroundColor";
-        public const String Color1Key = "color1";
-        public const String Color2Key = "color2";
-
-        // helpers
-        private Int32 backgroundColor   { get { return _colorsDict[ BackgroundColorKey ]; } }
-        private Int32 color1            { get { return _colorsDict[ Color1Key ]; } }
-        private Int32 color2            { get { return _colorsDict[Color2Key]; } }
 
         public AlternatingColorContourMapGenerator( FLTTopoData data,
                                                     int contourHeights,
@@ -314,7 +362,7 @@ namespace FLTTopoContour
                 // index to first pixel in row
                 int currentPixelIndex = (row - rectTop) * outputImageWidth();
 
-                Int32 currentPixel = backgroundColor;
+                Int32 currentPixel = _backgroundColor;
 
                 // note : looping in topo map space
                 for (int col = rectLeft; col <= rectRight; ++col)
@@ -337,22 +385,22 @@ namespace FLTTopoContour
 
                     if (drawCurrent)
                     {
-                        currentPixel = backgroundColor;
+                        currentPixel = _backgroundColor;
 
                         Int32 evenOdd = Convert.ToInt32(highestValue / _contourHeights % 2);
 
                         if (evenOdd <= 0)
                         {
-                            currentPixel = color1;
+                            currentPixel = _color1;
                         }
                         else
                         {
-                            currentPixel = color2;
+                            currentPixel = _color2;
                         }
                     }
                     else
                     {
-                        currentPixel = backgroundColor;
+                        currentPixel = _backgroundColor;
                     }
 
                     pixels[currentPixelIndex] = currentPixel;
@@ -384,19 +432,6 @@ namespace FLTTopoContour
     {
         public override String GetName() { return "gradient"; }
 
-        public const String LowColorKey = "gradientLoColor";
-        public const String HighColorKey = "gradientHiColor";
-
-        // helpers
-        private Int32 LowColor
-        {
-            get { return _colorsDict[ LowColorKey ]; }
-        }
-        private Int32 HighColor
-        {
-            get { return _colorsDict[HighColorKey]; }
-        }
-
         public GradientTopoMapGenerator(    FLTTopoData data,
                                             int contourHeights,
                                             String outputFilename,
@@ -419,13 +454,13 @@ namespace FLTTopoContour
             stopwatch.Start();
 
             // get gradient color components
-            int lowRed = (LowColor >> 16) & 0xFF;
-            int lowGreen = (LowColor >> 8) & 0xFF;
-            int lowBlue = LowColor & 0xFF;
+            int lowRed = (_lowColor >> 16) & 0xFF;
+            int lowGreen = (_lowColor >> 8) & 0xFF;
+            int lowBlue = _lowColor & 0xFF;
 
-            int highRed = (HighColor >> 16) & 0xFF;
-            int highGreen = (HighColor >> 8) & 0xFF;
-            int highBlue = HighColor & 0xFF;
+            int highRed = (_highColor >> 16) & 0xFF;
+            int highGreen = (_highColor >> 8) & 0xFF;
+            int highBlue = _highColor & 0xFF;
 
             int redRange = highRed - lowRed;
             int greenRange = highGreen - lowGreen;
@@ -449,9 +484,17 @@ namespace FLTTopoContour
             float maxElevationInRect = 0;
             int maxElevationRow = 0, maxElevationColumn = 0;
 
+            stopwatch.Reset();
+            stopwatch.Start();
+
             _data.FindMinMaxInRect( rectLeft, rectTop, rectRight, rectBottom,
                                     ref minElevationInRect, ref minElevationRow, ref minElevationColumn,
                                     ref maxElevationInRect, ref maxElevationRow, ref maxElevationColumn );
+
+            stopwatch.Stop();
+            addTiming("min/max discovery", stopwatch.ElapsedMilliseconds);
+            stopwatch.Reset();
+            stopwatch.Start();
 
             float range = maxElevationInRect - minElevationInRect; //topoData.MaximumElevation - topoData.MinimumElevation;
             float oneOverRange = 1.0f / range;
@@ -486,4 +529,170 @@ namespace FLTTopoContour
 
     }
 
+    // /////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public class HorizontalSlicesTopoMapGenerator : TopoMapGenerator
+    {
+        public override String GetName() { return "HSlice"; }
+
+        public HorizontalSlicesTopoMapGenerator(    FLTTopoData data,
+                                                    int contourHeights,
+                                                    String outputFilename,
+                                                    int[] rectIndices
+                                                    )
+            : base(data, contourHeights, outputFilename, rectIndices)
+        {}
+
+        // -----------------------------------------------------------------------------------------------
+        public override void Generate()
+        {
+            System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
+            stopwatch.Reset();
+            stopwatch.Start();
+
+            _data.Quantize(_contourHeights);
+
+            stopwatch.Stop();
+            addTiming("quantization", stopwatch.ElapsedMilliseconds);
+            stopwatch.Reset();
+            stopwatch.Start();
+
+            // find minimum and maximum coordinates generator will iterate between.
+            // note that this finds the min/max of the quantized data, so will not be the true heights, but that's not important to accurately calculating
+            // the range
+            float minElevationInRect = 0;
+            int minElevationRow = 0, minElevationColumn = 0;
+
+            float maxElevationInRect = 0;
+            int maxElevationRow = 0, maxElevationColumn = 0;
+
+            stopwatch.Reset();
+            stopwatch.Start();
+
+            _data.FindMinMaxInRect(rectLeft, rectTop, rectRight, rectBottom,
+                                    ref minElevationInRect, ref minElevationRow, ref minElevationColumn,
+                                    ref maxElevationInRect, ref maxElevationRow, ref maxElevationColumn);
+
+            // debugging
+            Console.WriteLine( "max elevation : " + maxElevationInRect );
+
+            stopwatch.Stop();
+            addTiming("min/max discovery", stopwatch.ElapsedMilliseconds);
+
+            Int32[] pixels = new Int32[outputImagePixelCount()];
+
+            // since map data was quantized, all data in the map is already on contours, so we can start
+            // at the minimum discovered elevation, plus one 'step', since there won't be steps from any
+            // lower contours to the minimum elevation
+            float currentContour = minElevationInRect + _contourHeights;
+
+            float difference = maxElevationInRect - minElevationInRect;
+
+            // ----------------
+            // single pixel row computation (on a specific contour)
+            Func<int, float, int>ComputePixelRowSingleContour = ( row, currentContourRow ) =>
+            {
+                // This row function moves a three by three 'window' across the data. The middle data point represents the
+                // current pixel. If it is higher than any of the neighboring values, that pixel represents a step up
+                // from below the current contour onto the current contour.
+                var rowAbove = new float[3];
+                var rowCenter = new float[3];
+                var rowBelow = new float[3];
+
+                // initialize row datas 
+                rowAbove[0]     = _data.ValueAt( row - 1, rectLeft - 1);
+                rowCenter[0]    = _data.ValueAt( row,     rectLeft - 1);
+                rowBelow[0]     = _data.ValueAt( row + 1, rectLeft - 1);
+
+                rowAbove[1]     = _data.ValueAt( row - 1, rectLeft );
+                rowCenter[1]    = _data.ValueAt( row,     rectLeft );   // 'middle' value, represents current pixel
+                rowBelow[1]     = _data.ValueAt( row + 1, rectLeft );
+
+                rowAbove[2]     = _data.ValueAt( row - 1,   rectLeft + 1 );
+                rowCenter[2]    = _data.ValueAt( row,       rectLeft + 1 );
+                rowBelow[2]     = _data.ValueAt( row + 1,   rectLeft + 1 );
+
+                // index to first pixel in row (in image space) 
+                // note : +1 because the first pixel processed is at index one (not zero)
+                int     currentPixelIndex = (row - rectTop) * outputImageWidth() + 1;   
+
+                Int32   currentPixel = _backgroundColor;
+
+                // note that loop stops one short of right edge, this is because the tests look one past the current pixel
+                for ( int col = rectLeft; col <= rectRight - 1; ++col ) // note : moving in topo space
+                {
+                    /* // takes about 0.7 seconds for a 4k by 4k rect */
+                    // test that pixel is on current contour, and ANY neighbor is on a lower step
+                    currentPixel =      ( rowCenter[1] == currentContourRow )
+                                    &&  (       ( rowAbove[0] < rowCenter[1] )
+                                            ||  ( rowAbove[1] < rowCenter[1] )
+                                            ||  ( rowAbove[2] < rowCenter[1] )
+                                            ||  ( rowCenter[0] < rowCenter[1] )
+                                            ||  ( rowCenter[2] < rowCenter[1] )
+                                            ||  ( rowBelow[0] < rowCenter[1] )
+                                            ||  ( rowBelow[1] < rowCenter[1] )
+                                            ||  ( rowBelow[2] < rowCenter[1] ) ) ? _contourLineColor : _backgroundColor;
+
+                    // neat looking 'stripes' at current contour with simple equality test
+                    //currentPixel = (currentValue == currentContourRow) ? contourLineColor : backgroundColor;
+
+                    pixels[ currentPixelIndex ] = currentPixel;
+
+                    ++currentPixelIndex;
+
+                    // 'shift' current windows to the right
+                    rowAbove[0] = rowAbove[1];
+                    rowAbove[1] = rowAbove[2];
+                    rowAbove[2] = _data.ValueAt( row - 1, col + 1);  // new value moves into window...
+
+                    rowCenter[0] = rowCenter[1];
+                    rowCenter[1] = rowCenter[2];
+                    rowCenter[2] = _data.ValueAt( row, col + 1 );
+
+                    rowBelow[0] = rowBelow[1];
+                    rowBelow[1] = rowBelow[2];
+                    rowBelow[2] = _data.ValueAt( row + 1, col + 1 );
+                }
+
+                // fix up first pixel in row with whatever was put at second index
+                pixels[ (row - rectTop) * outputImageWidth() ] = pixels[ (row - rectTop) * outputImageWidth() + 1];
+
+                return row;
+            };
+            // -----------------
+
+            // ----------------
+            // generate the maps...
+            while ( currentContour <= maxElevationInRect )
+            {
+                Console.WriteLine( " processing contour height: " + currentContour );
+                stopwatch.Reset();
+                stopwatch.Start();
+
+                // draw map at current contour line
+                // note +1 on beginning row , this is because the inner loop looks one above and below the current row
+                // note : Parallel.For excludes the final (second) index, so it is safe to specify it as the end index
+                Parallel.For(rectTop + 1, rectBottom, row =>
+                {
+                    ComputePixelRowSingleContour(row, currentContour);
+                });
+
+                // copy second row of image to first row, and next to last row to last (fixes up edge lines that could not be calculated)
+                int nextToLastRowStartIndex = outputImageWidth() * (outputImageHeight() - 2);
+                int lastRowStartIndex = outputImageWidth() * (outputImageHeight() - 1);
+                for ( int column = 0; column < outputImageWidth(); ++column )
+                {
+                    pixels[ column ] = pixels[ outputImageWidth() + column ];
+                    pixels[lastRowStartIndex + column] = pixels[nextToLastRowStartIndex + column];
+                }
+
+                addTiming("generating map for contour height: " + currentContour, stopwatch.ElapsedMilliseconds);
+
+                String currentFilename = _outputFilename + "_" + Convert.ToInt32( currentContour );
+                SaveBitmap( currentFilename, pixels );
+
+                // step up to next contour line
+                currentContour += _contourHeights;
+            }
+        }   // end Generate()
+    }   // end class
 }

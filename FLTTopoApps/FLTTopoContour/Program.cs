@@ -73,6 +73,8 @@ namespace FLTTopoContour
             public String   HelpText;           // shown in help mode
             public String   Description;        // used when reporting option values
 
+            public Boolean  ExpectsValue;       // if true, this option expects a value
+
             public ParseOptionDelegate ParseDelegate;   // used to translate input text to option value
 
             // list of (string type only) parameters that can specify values for this parameter
@@ -84,6 +86,7 @@ namespace FLTTopoContour
                 HelpText = "";
                 ParseDelegate = null;
                 AllowedValues = null;
+                ExpectsValue = false;
             }
         };
 
@@ -530,10 +533,13 @@ namespace FLTTopoContour
                 programNotes = new List<String>();
 
                 // yeah yeah, could be an external resource, but I prefer the portability of them being in the code
-                programNotes.Add( "Colors are specified as a 'hex triplet' of the form RRGGBB\nwhere RR = red value, GG = green value, and BB = blue value." );
-                programNotes.Add( "Color values are given in base-16, and range from 0-255." );
-                programNotes.Add( "Rect 'top' and 'bottom' indices are actually reversed (top < bottom), due to the way topo data is stored." );
-                programNotes.Add( "If a rect is specified in both indices and coordinates, the indices will be ignored." );
+                programNotes.Add( "-Colors are specified as a 'hex triplet' of the form RRGGBB\nwhere RR = red value, GG = green value, and BB = blue value." );
+                programNotes.Add( "-Color values are given in base-16, and range from 0-255." );
+                programNotes.Add( "-Rect 'top' and 'bottom' indices are actually reversed (top < bottom), since topo data is stored from north to south." );
+                programNotes.Add( "-If a rect is specified in both indices and coordinates, the indices will be ignored." );
+                programNotes.Add( "-The equal sign between options and values may be omitted." );
+                programNotes.Add( "-Example usage (assumes existence of MyInputFile.hdr and MyInputFile.flt) : " );
+                programNotes.Add( "  flttopocontour MyInputFile -outputfile=MyOutputFile -maptype=gradient -gradlocolor=FF0000 -gradhicolor=0000ff" );
             }
         }
 
@@ -564,62 +570,73 @@ namespace FLTTopoContour
 
             optionTypeToSpecDict.Add( OptionType.HelpRequest,   new OptionSpecifier{    Specifier = HelpRequestChar.ToString(), 
                                                                                         Description = "Help (list available options + program notes)",
-                                                                                        HelpText = ": print all options + program notes",
+                                                                                        HelpText = "print all options + program notes",
                                                                                         ParseDelegate = parseHelpRequest } );
             optionTypeToSpecDict.Add( OptionType.DataReportOnly,new OptionSpecifier{    Specifier = "datareport",
                                                                                         Description = "Report only",
-                                                                                        HelpText = ": Reports details of topo data only, no other output.",
+                                                                                        HelpText = "details of topo data only, no map produced",
                                                                                         ParseDelegate = parseReportOnly });
             optionTypeToSpecDict.Add( OptionType.ReportTimings, new OptionSpecifier{    Specifier = "timings", 
                                                                                         Description = "Report Timings",
-                                                                                        HelpText = ": report Timings",
+                                                                                        HelpText = "report timings upon completion",
                                                                                         ParseDelegate = parseReportTimings });
                                                                                         
-            optionTypeToSpecDict.Add( OptionType.Mode,          new OptionSpecifier{    Specifier = "mode", 
-                                                                                        Description = "Output mode",
-                                                                                        HelpText = "<M>: mode (type of output)",
+            optionTypeToSpecDict.Add( OptionType.Mode,          new OptionSpecifier{    Specifier = "maptype", 
+                                                                                        Description = "Map Type",
+                                                                                        HelpText = "<M>: map type",
                                                                                         AllowedValues = mapTypeToSpecifierDict.Values.ToList<OptionSpecifier>(), 
-                                                                                        ParseDelegate = parseMapType });
+                                                                                        ParseDelegate = parseMapType,
+                                                                                        ExpectsValue = true });
             optionTypeToSpecDict.Add( OptionType.OutputFile,    new OptionSpecifier{    Specifier = "outfile", 
                                                                                         Description = "Output file",
                                                                                         HelpText = "<OutputFile>: specifies output image file",
-                                                                                        ParseDelegate = parseOutputFile });
+                                                                                        ParseDelegate = parseOutputFile,
+                                                                                        ExpectsValue = true });
             optionTypeToSpecDict.Add( OptionType.ContourHeights,new OptionSpecifier{    Specifier = "contours", 
                                                                                         Description = "Contour heights",
                                                                                         HelpText = "<NNN>: Contour height separation (every NNN meters), Minimum : " + MinimumContourHeights,
-                                                                                        ParseDelegate = parseContourHeights } );
+                                                                                        ParseDelegate = parseContourHeights,
+                                                                                        ExpectsValue = true });
             optionTypeToSpecDict.Add(OptionType.BackgroundColor,new OptionSpecifier{    Specifier = TopoMapGenerator.colorType.bgcolor.ToString(),
                                                                                         Description = "Background color",
                                                                                         HelpText = "<RRGGBB>: Background Color (defaults to white)",
-                                                                                        ParseDelegate = parseBackgroundColor });
+                                                                                        ParseDelegate = parseBackgroundColor,
+                                                                                        ExpectsValue = true });
             optionTypeToSpecDict.Add(OptionType.ContourColor, new OptionSpecifier{     Specifier = TopoMapGenerator.colorType.concolor.ToString(),
                                                                                         Description = "Contour lines color",
                                                                                         HelpText = "<RRGGBB>: color of contour lines in normal mode",
-                                                                                        ParseDelegate = parseContourColor });
+                                                                                        ParseDelegate = parseContourColor,
+                                                                                        ExpectsValue = true });
             optionTypeToSpecDict.Add(OptionType.AlternatingColor1, new OptionSpecifier{ Specifier = TopoMapGenerator.colorType.altcolor1.ToString(),
                                                                                         Description = "Alternating contour colors 1",
                                                                                         HelpText = "<RRGGBB>: color 1 in alternating mode",
-                                                                                        ParseDelegate = parseAlternatingContourColor1 });
+                                                                                        ParseDelegate = parseAlternatingContourColor1,
+                                                                                        ExpectsValue = true });
             optionTypeToSpecDict.Add(OptionType.AlternatingColor2, new OptionSpecifier{ Specifier = TopoMapGenerator.colorType.altcolor2.ToString(),
                                                                                         Description = "Alternating contour colors 2",
                                                                                         HelpText = "<RRGGBB>: color 2 in alternating mode",
-                                                                                        ParseDelegate = parseAlternatingContourColor2 });
+                                                                                        ParseDelegate = parseAlternatingContourColor2,
+                                                                                        ExpectsValue = true });
             optionTypeToSpecDict.Add(OptionType.GradientLoColor, new OptionSpecifier{   Specifier = TopoMapGenerator.colorType.gradlocolor.ToString(),
                                                                                         Description = "Gradient mode low point color",
                                                                                         HelpText = "<RRGGBB> color of lowest points on map in gradient mode",
-                                                                                        ParseDelegate = parseGradientLoColor });
+                                                                                        ParseDelegate = parseGradientLoColor,
+                                                                                        ExpectsValue = true });
             optionTypeToSpecDict.Add(OptionType.GradientHiColor, new OptionSpecifier{   Specifier = TopoMapGenerator.colorType.gradhicolor.ToString(),
                                                                                         Description = "Gradient mode high point color",
                                                                                         HelpText = "<RRGGBB> color of highest points on map in gradient mode",
-                                                                                        ParseDelegate = parseGradientHiColor });
-            optionTypeToSpecDict.Add(OptionType.RectIndices, new OptionSpecifier{              Specifier = "recttlbr",
+                                                                                        ParseDelegate = parseGradientHiColor,
+                                                                                        ExpectsValue = true });
+            optionTypeToSpecDict.Add(OptionType.RectIndices, new OptionSpecifier{       Specifier = "recttlbr",
                                                                                         Description = "Rectangle Indices",
                                                                                         HelpText = "<"+rectTopName+","+rectLeftName+","+rectBottomName+","+rectRightName+"> indices of grid within topo data to process and output",
-                                                                                        ParseDelegate = parseRectIndices });
+                                                                                        ParseDelegate = parseRectIndices,
+                                                                                        ExpectsValue = true });
             optionTypeToSpecDict.Add(OptionType.RectCoords, new OptionSpecifier{        Specifier = "rectnwse",
                                                                                         Description = "Rectangle Coordinates",
                                                                                         HelpText = "<"+NorthString+","+WestString+","+SouthString+","+EastString+"> specifies grid by (floating point) lat/long values",
-                                                                                        ParseDelegate = parseRectCoordinates });
+                                                                                        ParseDelegate = parseRectCoordinates,
+                                                                                        ExpectsValue = true });
         }
 
         // --------------------------------------------------------------------------------------
@@ -636,18 +653,22 @@ namespace FLTTopoContour
             Console.WriteLine( indent + "Required:" );
             Console.WriteLine( indent2 + "InputFile : (no prefix dash) Name of input file (without extension, there must be both an FLT and HDR data file with this name)" );
 
-            Console.WriteLine( indent + "Optional:" );
+            Console.WriteLine( indent + "Optional:");
+            Console.WriteLine( indent + "(must be preceded by dash)");
+            Console.WriteLine( indent + "('=' means option must be followed by equal sign, then value for <>)");
             foreach ( var currentOptionSpec in optionTypeToSpecDict.Values )
             {
                 // Note : hardwiring the dash in front of these optional parameters
                 // also note that description string immediately follows specifier
-                String currentParamString = indent2 + "-" + currentOptionSpec.Specifier + currentOptionSpec.HelpText;
+                String separator = currentOptionSpec.ExpectsValue ? "=" : " : ";
+
+                String currentParamString = indent2 + "-" + currentOptionSpec.Specifier + separator + currentOptionSpec.HelpText;
 
                 Console.WriteLine(currentParamString);
 
                 if ( null != currentOptionSpec.AllowedValues )
                 {
-                    Console.WriteLine( indent3 + "Options : " );
+                    Console.WriteLine( indent3 + "Options for " + currentOptionSpec.Description + " : " );
                     foreach ( var currentAllowedValueSpec in currentOptionSpec.AllowedValues )
                     {
                         String currentAllowedValueString  = indent4 + currentAllowedValueSpec.Specifier + " : " + currentAllowedValueSpec.HelpText;
@@ -664,7 +685,7 @@ namespace FLTTopoContour
             Console.WriteLine( "Notes:" );
             foreach ( var currentNote in programNotes )
             {
-                Console.WriteLine( " -" + currentNote );
+                Console.WriteLine( currentNote );
             }
         }
 
@@ -696,6 +717,11 @@ namespace FLTTopoContour
 
                                 // skip specifier string
                                 currentOptionString = currentOptionString.Substring( currentOptionSpec.Specifier.Length );
+                                // allow equal sign
+                                if ( currentOptionString.StartsWith( "=" ) )
+                                {
+                                    currentOptionString = currentOptionString.Substring(1);
+                                }
 
                                 parsed = currentOptionSpec.ParseDelegate( currentOptionString, ref parseErrorMessage );
                             }

@@ -26,15 +26,14 @@ using System.IO;
 using System.Drawing;
 
 using FLTDataLib;
+using OptionUtils;
 
 /*
  *  TODO :
  *  -file overwrite avoidance or confirmation
-    -'slice' modes (horizontal and vertical)
     -config file?
     -suppress output option?
     -is my capitalization all over the place?
-    -add program note explaining that top must be < bottom, not greater, and why!
     -return error codes from Main?
     - add 'mark coordinates' option ?
  * */
@@ -45,7 +44,6 @@ namespace FLTTopoContour
     {
         const float versionNumber = 1.4f;
 
-        // TYPES
         // different options the user specifies
         enum OptionType
         {
@@ -65,36 +63,12 @@ namespace FLTTopoContour
             RectCoords          // specifies rectangle within topo data to process/output by (floating point) latitude and longitude coordinates 
         };
 
-        delegate Boolean ParseOptionDelegate( String input, ref String parseErrorString );
-
-        class OptionSpecifier
-        {
-            public String   Specifier;          // string, entered in arguments, that denotes option
-            public String   HelpText;           // shown in help mode
-            public String   Description;        // used when reporting option values
-
-            public Boolean  ExpectsValue;       // if true, this option expects a value
-
-            public ParseOptionDelegate ParseDelegate;   // used to translate input text to option value
-
-            // list of (string type only) parameters that can specify values for this parameter
-            public List<OptionSpecifier> AllowedValues;
-
-            public OptionSpecifier()
-            {
-                Specifier = "";
-                HelpText = "";
-                ParseDelegate = null;
-                AllowedValues = null;
-                ExpectsValue = false;
-            }
-        };
-
         // TODO : settle on a capitalization scheme here!!!
 
         // CONSTANTS
         const String noInputsErrorMessage = "No inputs.";
         const String noInputFileSpecifiedErrorMessage = "No input file specified.";
+        const String moreThanOneInputFileSpecifiedErrorString = "More than one input file specified.";
         const String ConsoleSectionSeparator = "- - - - - - - - - - -";
         const String BannerMessage = "FLT Topo Data Contour Generator (run with '?' for options list)";  // "You wouldn't like me when I'm angry."
         const char HelpRequestChar = '?';
@@ -113,14 +87,12 @@ namespace FLTTopoContour
 
         const Int32 MinimumContourHeights = 1;
 
-        const float CoordinateNotSpecifiedValue = float.MaxValue;
-
         // DEFAULTS
         const String DefaultOutputFileSuffix = "_topo";
         const int DefaultContourHeights = 200;
         const TopoMapGenerator.MapType DefaultMapType = TopoMapGenerator.MapType.Normal;
 
-        const String DefaultBackgroundColorString = "FFFFFF";
+        //const String DefaultBackgroundColorString = "FFFFFF";
         const Int32 DefaultBackgroundColor = (Int32)(((byte)0xFF << 24) | (0xFF << 16) | (0xFF << 8) | 0xFF); // white
 
         const String DefaultContourColorString = "000000";
@@ -143,7 +115,6 @@ namespace FLTTopoContour
         static Dictionary< OptionType, OptionSpecifier > optionTypeToSpecDict;
 
         // maps output modes onto their specifiers
-        //static Dictionary< OutputModeType, OptionSpecifier > outputModeToSpecifierDict;
         static Dictionary< TopoMapGenerator.MapType, OptionSpecifier > mapTypeToSpecifierDict;
 
         // ---- SETTINGS ----
@@ -152,6 +123,7 @@ namespace FLTTopoContour
 
         static bool helpRequested = false;
 
+        // type of map to produce
         static TopoMapGenerator.MapType outputMapType = DefaultMapType;
 
         static int contourHeights = DefaultContourHeights;
@@ -161,26 +133,6 @@ namespace FLTTopoContour
         static Boolean dataReportOnly = false;
 
         static String parseErrorMessage = "";
-
-        // background color (used in normal and alternating modes)
-        //static Int32 backgroundColor = DefaultBackgroundColor;
-        static String backgroundColorString = DefaultBackgroundColorString;
-
-        // normal mode 
-        //static Int32 contourColor = DefaultContourColor;
-        static String contourColorString = DefaultContourColorString;
-
-        // alternating mode 
-        //static Int32 alternatingContourColor1 = DefaultAlternatingColor1;
-        static String alternatingContourColor1String = DefaultAlternatingColor1String;
-        //static Int32 alternatingContourColor2 = DefaultAlternatingColor2;
-        static String alternatingContourColor2String = DefaultAlternatingColor2String;
-
-        // gradient mode 
-        //static Int32 gradientLoColor = DefaultGradientLoColor;
-        static String gradientLoColorString = DefaultGradientLoColorString;
-        //static Int32 gradientHiColor = DefaultGradientHiColor;
-        static String gradientHiColorString = DefaultGradientHiColorString;
 
         static Dictionary<String, Int32> colorsDict = null;
 
@@ -263,74 +215,13 @@ namespace FLTTopoContour
         }
 
         // ------------------------------------------------------
-        // TODO : move to library so apps can all share
-        // converts hex triplet to 32 bit pixel (note : does NOT expect 0x prefix on string)
-        static private Int32 parseColorHexTriplet( String input, ref Boolean parsed, ref String parseErrorString )
-        {
-            parsed = true;
-            Int32 colorValue = 0;
-
-            if (6 != input.Length)
-            {
-                parsed = false;
-                parseErrorString = "color string not six digits in length";
-            }
-            else
-            {
-                String redString = input.Substring( 0, 2 );
-                String greenString = input.Substring( 2, 2 );
-                String blueString = input.Substring( 4, 2 );
-
-                Int32 redValue = 0;
-                Int32 greenValue = 0;
-                Int32 blueValue = 0; 
-
-                try
-                {
-                    redValue = Convert.ToInt32( redString, 16 );
-                }
-                catch ( System.FormatException )
-                {
-                    parsed = false;
-                    parseErrorString = "could not convert '" + redString + "' to red value";
-                }
-
-                try
-                {
-                    greenValue = Convert.ToInt32( greenString, 16 );
-                    blueValue = Convert.ToInt32( blueString, 16 );
-                }
-                catch (System.FormatException)
-                {
-                    parsed = false;
-                    parseErrorString = "could not convert '" + greenString + "' to green value";
-                }
-
-                try
-                {
-                    blueValue = Convert.ToInt32(blueString, 16);
-                }
-                catch (System.FormatException)
-                {
-                    parsed = false;
-                    parseErrorString = "could not convert '" + blueString + "' to blue value";
-                }
-
-                colorValue = (Int32)(((byte)0xFF << 24) | (redValue << 16) | (greenValue << 8) | blueValue);
-            }
-
-            return colorValue;
-        }
-
-        // ------------------------------------------------------
         // generalized color parsing
-        // TODO : move to library so apps can share
         static private Boolean parseColor( String input, String colorDescription, ref String parseErrorString, String colorsDictKey )
         {
             Boolean parsed = true;
 
             String parseError = "";
-            int color = parseColorHexTriplet(input, ref parsed, ref parseError);
+            int color = OptionUtils.ParseSupport.parseColorHexTriplet(input, ref parsed, ref parseError);
 
             if (false == parsed)
             {
@@ -396,7 +287,7 @@ namespace FLTTopoContour
 
             if ( false == parsed )
             {
-                parseErrorString = "Specified mode '" + input + "' not recognized.";
+                parseErrorString = "Specified map type '" + input + "' not recognized.";
             }
 
             return parsed;
@@ -533,13 +424,14 @@ namespace FLTTopoContour
                 programNotes = new List<String>();
 
                 // yeah yeah, could be an external resource, but I prefer the portability of them being in the code
-                programNotes.Add( "-Colors are specified as a 'hex triplet' of the form RRGGBB\nwhere RR = red value, GG = green value, and BB = blue value." );
+                programNotes.Add("-Example usage (assumes existence of MyInputFile.hdr and MyInputFile.flt) : ");
+                programNotes.Add("  flttopocontour MyInputFile outputfile=MyOutputFile maptype=gradient gradlocolor=FF0000 gradhicolor=0000ff");
+                programNotes.Add("");
+                programNotes.Add("-Colors are specified as a 'hex triplet' of the form RRGGBB\nwhere RR = red value, GG = green value, and BB = blue value.");
                 programNotes.Add( "-Color values are given in base-16, and range from 0-255." );
                 programNotes.Add( "-Rect 'top' and 'bottom' indices are actually reversed (top < bottom), since topo data is stored from north to south." );
                 programNotes.Add( "-If a rect is specified in both indices and coordinates, the indices will be ignored." );
-                programNotes.Add( "-The equal sign between options and values may be omitted." );
-                programNotes.Add( "-Example usage (assumes existence of MyInputFile.hdr and MyInputFile.flt) : " );
-                programNotes.Add( "  flttopocontour MyInputFile -outputfile=MyOutputFile -maptype=gradient -gradlocolor=FF0000 -gradhicolor=0000ff" );
+                programNotes.Add( "-The equal sign between options and values may be omitted (e.g. : gradlocolorFF0000)." );
             }
         }
 
@@ -651,18 +543,15 @@ namespace FLTTopoContour
             Console.WriteLine( ConsoleSectionSeparator );
             Console.WriteLine( "Options:" );
             Console.WriteLine( indent + "Required:" );
-            Console.WriteLine( indent2 + "InputFile : (no prefix dash) Name of input file (without extension, there must be both an FLT and HDR data file with this name)" );
+            Console.WriteLine( indent2 + "Name of input file (without extension, there must be both an FLT and HDR data file with this name)" );
 
             Console.WriteLine( indent + "Optional:");
-            Console.WriteLine( indent + "(must be preceded by dash)");
-            Console.WriteLine( indent + "('=' means option must be followed by equal sign, then value for <>)");
+            Console.WriteLine( indent + "('=' indicates option is followed by equal sign, then value for <>)");
             foreach ( var currentOptionSpec in optionTypeToSpecDict.Values )
             {
-                // Note : hardwiring the dash in front of these optional parameters
-                // also note that description string immediately follows specifier
                 String separator = currentOptionSpec.ExpectsValue ? "=" : " : ";
 
-                String currentParamString = indent2 + "-" + currentOptionSpec.Specifier + separator + currentOptionSpec.HelpText;
+                String currentParamString = indent2 + currentOptionSpec.Specifier + separator + currentOptionSpec.HelpText;
 
                 Console.WriteLine(currentParamString);
 
@@ -690,80 +579,38 @@ namespace FLTTopoContour
         }
 
         // -------------------------------------------------------------------------------------
-        static private Boolean parseArgs(string[] args)
+        static private Boolean HandleNonMatchedParameter( String argString, ref String parseErrorString )
         {
-            Boolean parsed = true;
+            Boolean handled = false;
 
-            if ( 0 == args.Length )
+            // input file name (we think/hope)
+            // see if header and data files exist
+            if (        System.IO.File.Exists( argString + "." + FLTDataLib.Constants.HEADER_FILE_EXTENSION )
+                    &&  System.IO.File.Exists( argString + "." + FLTDataLib.Constants.DATA_FILE_EXTENSION) )
             {
-                parseErrorMessage = noInputsErrorMessage;
-                parsed = false;
-            }
-            else
-            {
-                foreach ( string currentArg in args )
+                // specifying more than one input file is not yet  supported
+                if (inputFileBaseName.Length > 0)
                 {
-                    if ( '-' == currentArg.ElementAt(0))
-                    {
-                        String currentOptionString = currentArg.Substring(1); // skip dash
-                        Boolean matched = false;
-
-                        // try to match an option specifier
-                        foreach ( var currentOptionSpec in optionTypeToSpecDict.Values )
-                        {
-                            if (currentOptionString.StartsWith(currentOptionSpec.Specifier))
-                            {
-                                matched = true;
-
-                                // skip specifier string
-                                currentOptionString = currentOptionString.Substring( currentOptionSpec.Specifier.Length );
-                                // allow equal sign
-                                if ( currentOptionString.StartsWith( "=" ) )
-                                {
-                                    currentOptionString = currentOptionString.Substring(1);
-                                }
-
-                                parsed = currentOptionSpec.ParseDelegate( currentOptionString, ref parseErrorMessage );
-                            }
-
-                            if ( matched )
-                            {
-                                break; 
-                            }
-                        }   // end foreach option spec
-
-                        // detect invalid options
-                        if ( false == matched )
-                        {
-                            parseErrorMessage = "Unrecognized option : " + currentArg;
-                            parsed = false;
-                        }
-                    }
-                    else // no dash
-                    {
-                        // I'll specifically support no dash on ye olde help request
-                        // requesting help?
-                        if ( HelpRequestChar == currentArg.ElementAt(0))
-                        {
-                            helpRequested = true;
-                        }
-                        else
-                        {
-                            // input file name (we think/hope)
-                            inputFileBaseName = currentArg;
-                        }
-                    }   // end else
-
-                    // if current parse failed get out
-                    if ( false == parsed )
-                    {
-                        break;
-                    }
+                    parseErrorString = moreThanOneInputFileSpecifiedErrorString;
+                    handled = false;
+                }
+                else
+                {
+                    inputFileBaseName = argString;
+                    handled = true;
                 }
             }
 
+            return handled;
+        }
+
+        // -------------------------------------------------------------------------------------
+        static private Boolean parseArgs(string[] args)
+        {
+            Boolean parsed = OptionUtils.ParseSupport.ParseArgs( args, optionTypeToSpecDict.Values.ToList<OptionUtils.OptionSpecifier>(), HandleNonMatchedParameter, ref parseErrorMessage );
+
             // must specify input file
-            if ( 0 == inputFileBaseName.Length )
+            if ( parsed && (0 == inputFileBaseName.Length) )
             {
                 parseErrorMessage = noInputFileSpecifiedErrorMessage;
                 parsed = false;
@@ -827,27 +674,27 @@ namespace FLTTopoContour
                 // only report colors if changed from default
                 if ( colorsDict[ TopoMapGenerator.colorType.bgcolor.ToString() ] != DefaultBackgroundColor )
                 {
-                    Console.WriteLine( optionTypeToSpecDict[OptionType.BackgroundColor].Description + " : " + backgroundColorString );
+                    Console.WriteLine(optionTypeToSpecDict[OptionType.BackgroundColor].Description + " : " + OptionUtils.ParseSupport.ARGBColorToHexTriplet(colorsDict[TopoMapGenerator.colorType.bgcolor.ToString()]));
                 }
                 if (colorsDict[TopoMapGenerator.colorType.concolor.ToString()] != DefaultContourColor)
                 {
-                    Console.WriteLine(optionTypeToSpecDict[OptionType.ContourColor].Description + " : " + contourColorString);
+                    Console.WriteLine(optionTypeToSpecDict[OptionType.ContourColor].Description + " : " + OptionUtils.ParseSupport.ARGBColorToHexTriplet( colorsDict[ TopoMapGenerator.colorType.concolor.ToString() ] ) );
                 }
                 if ( colorsDict[TopoMapGenerator.colorType.altcolor1.ToString()] != DefaultAlternatingColor1 )
                 {
-                    Console.WriteLine(optionTypeToSpecDict[OptionType.AlternatingColor1].Description + " : " + alternatingContourColor1String);
+                    Console.WriteLine(optionTypeToSpecDict[OptionType.AlternatingColor1].Description + " : " + OptionUtils.ParseSupport.ARGBColorToHexTriplet(colorsDict[TopoMapGenerator.colorType.altcolor1.ToString()]));
                 }
                 if ( colorsDict[TopoMapGenerator.colorType.altcolor2.ToString() ] != DefaultAlternatingColor2)
                 {
-                    Console.WriteLine(optionTypeToSpecDict[OptionType.AlternatingColor2].Description + " : " + alternatingContourColor2String);
+                    Console.WriteLine(optionTypeToSpecDict[OptionType.AlternatingColor2].Description + " : " + OptionUtils.ParseSupport.ARGBColorToHexTriplet(colorsDict[TopoMapGenerator.colorType.altcolor2.ToString()]));
                 }
                 if ( colorsDict[TopoMapGenerator.colorType.gradlocolor.ToString() ] != DefaultGradientLoColor)
                 {
-                    Console.WriteLine(optionTypeToSpecDict[OptionType.GradientLoColor].Description + " : " + gradientLoColorString);
+                    Console.WriteLine(optionTypeToSpecDict[OptionType.GradientLoColor].Description + " : " + OptionUtils.ParseSupport.ARGBColorToHexTriplet(colorsDict[TopoMapGenerator.colorType.gradlocolor.ToString()]));
                 }
                 if ( colorsDict[TopoMapGenerator.colorType.gradhicolor.ToString() ] != DefaultGradientHiColor)
                 {
-                    Console.WriteLine(optionTypeToSpecDict[OptionType.GradientHiColor].Description + " : " + gradientHiColorString);
+                    Console.WriteLine(optionTypeToSpecDict[OptionType.GradientHiColor].Description + " : " + OptionUtils.ParseSupport.ARGBColorToHexTriplet(colorsDict[TopoMapGenerator.colorType.gradhicolor.ToString()]));
                 }
 
                 echoRectExtents();
@@ -1081,11 +928,14 @@ namespace FLTTopoContour
                 System.Console.WriteLine();
                 System.Console.WriteLine("Error : " + parseErrorMessage);
 
-                echoAvailableOptions();
-
                 if (helpRequested)
                 {
+                    echoAvailableOptions();
                     echoProgramNotes();
+                }
+                else
+                {
+                    Console.WriteLine("\n(run with '" + HelpRequestChar + "' to see help)");
                 }
             }
             else // args parsed successfully

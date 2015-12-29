@@ -19,9 +19,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-
 using System.Drawing;
+
 using FLTDataLib;
+using OptionUtils;
 
 /* TODO
  * 
@@ -36,52 +37,24 @@ namespace FLTTopoVSlice
         const float versionNumber = 1.0f;
 
         // ---- TYPES ----
-        // used to specify a left right direction
-        enum DirectionType
-        {
-            Left,
-            Right
-        };
 
         // different options the user specifies
+        // note that the enums are used as specifiers, hence the lowercases
         enum OptionType
         {
             HelpRequest,        // list options
-            OutputFile,         // name of output file
-            CornerA,            // one end of baseline
-            CornerB,            // other end of baseline
-            Width,              // width (perpendicular to baseline)
-            PerpendicularDir,   // (left/right) direction of perpendicular relative to A->B baseline
-            BackgroundColor,    // color of 'ground' between contour lines
-            ContourColor       // color of contour lines 
-        };
-
-        delegate Boolean ParseOptionDelegate(String input, ref String parseErrorString);
-
-        // ============================================================
-        class OptionSpecifier
-        {
-            public String Specifier;          // string, entered in arguments, that denotes option
-            public String HelpText;           // shown in help mode
-            public String Description;        // used when reporting option values
-
-            public ParseOptionDelegate ParseDelegate;   // used to translate input text to option value
-
-            // list of (string type only) parameters that can specify values for this parameter
-            public List<OptionSpecifier> AllowedValues;
-
-            public OptionSpecifier()
-            {
-                Specifier = "";
-                HelpText = "";
-                ParseDelegate = null;
-                AllowedValues = null;
-            }
+            outputfile,         // name of output file
+            cornerA,            // one end of baseline
+            cornerB,            // other end of baseline
+            width,              // width (perpendicular to baseline)
+            bgcolor,            // color of 'ground' between contour lines
+            groundcolor         // color of contour lines 
         };
 
         // ---- CONSTANTS ----
         const String noInputsErrorMessage = "No inputs.";
         const String noInputFileSpecifiedErrorMessage = "No input file specified.";
+        const String moreThanOneInputFileSpecifiedErrorString = "More than one input file specified.";
         const String ConsoleSectionSeparator = "- - - - - - - - - - -";
         const String BannerMessage = "FLT Topo Data Vertical Slicer (run with '?' for options list)";  // "You wouldn't like me when I'm angry."
         const char HelpRequestChar = '?';
@@ -93,10 +66,8 @@ namespace FLTTopoVSlice
         // ---- DEFAULTS ----
         const String DefaultOutputFileSuffix = "_vslice";
 
-        const String DefaultBackgroundColorString = "FFFFFF";
         const Int32 DefaultBackgroundColor = (Int32)(((byte)0xFF << 24) | (0xFF << 16) | (0xFF << 8) | 0xFF); // white
 
-        const String DefaultContourColorString = "000000";
         const Int32 DefaultContourColor = (Int32)(((byte)0xFF << 24) | 0); // black
 
         // list of single line operating notes
@@ -105,8 +76,6 @@ namespace FLTTopoVSlice
         // ---- OPTIONS ----
         // supported options
         static Dictionary<OptionType, OptionSpecifier> optionTypeToSpecDict;
-
-        static Dictionary<DirectionType, OptionSpecifier> directionToSpecifierDict;
 
         // ---- SETTINGS ----
         static String inputFileBaseName = "";
@@ -117,10 +86,8 @@ namespace FLTTopoVSlice
         static String parseErrorMessage = "";
 
         static Int32 backgroundColor = DefaultBackgroundColor;
-        static String backgroundColorString = DefaultBackgroundColorString;
 
         static Int32 contourColor = DefaultContourColor;
-        static String contourColorString = DefaultContourColorString;
 
         static float cornerALatitude = floatNotSpecifiedValue;
         static float cornerALongitude = floatNotSpecifiedValue;
@@ -158,81 +125,18 @@ namespace FLTTopoVSlice
         }
 
         // ------------------------------------------------------
-        // converts hex triplet to 32 bit pixel (note : does NOT expect 0x prefix on string)
-        static private Int32 parseColorHexTriplet(String input, ref Boolean parsed, ref String parseErrorString)
-        {
-            parsed = true;
-            Int32 colorValue = 0;
-
-            if (6 != input.Length)
-            {
-                parsed = false;
-                parseErrorString = "color string not six digits in length";
-            }
-            else
-            {
-                String redString = input.Substring(0, 2);
-                String greenString = input.Substring(2, 2);
-                String blueString = input.Substring(4, 2);
-
-                Int32 redValue = 0;
-                Int32 greenValue = 0;
-                Int32 blueValue = 0;
-
-                try
-                {
-                    redValue = Convert.ToInt32(redString, 16);
-                }
-                catch (System.FormatException)
-                {
-                    parsed = false;
-                    parseErrorString = "could not convert '" + redString + "' to red value";
-                }
-
-                try
-                {
-                    greenValue = Convert.ToInt32(greenString, 16);
-                    blueValue = Convert.ToInt32(blueString, 16);
-                }
-                catch (System.FormatException)
-                {
-                    parsed = false;
-                    parseErrorString = "could not convert '" + greenString + "' to green value";
-                }
-
-                try
-                {
-                    blueValue = Convert.ToInt32(blueString, 16);
-                }
-                catch (System.FormatException)
-                {
-                    parsed = false;
-                    parseErrorString = "could not convert '" + blueString + "' to blue value";
-                }
-
-                colorValue = (Int32)(((byte)0xFF << 24) | (redValue << 16) | (greenValue << 8) | blueValue);
-            }
-
-            return colorValue;
-        }
-
-        // ------------------------------------------------------
         // generalized color parsing
         // TODO : move to library so apps can share
-        static private Boolean parseColor(String input, String colorDescription, ref String parseErrorString, ref Int32 colorOut, ref String colorStringOut)
+        static private Boolean parseColor(String input, String colorDescription, ref String parseErrorString, ref Int32 colorOut )
         {
             Boolean parsed = true;
 
             String parseError = "";
-            colorOut = parseColorHexTriplet(input, ref parsed, ref parseError);
+            colorOut = OptionUtils.ParseSupport.parseColorHexTriplet(input, ref parsed, ref parseError);
 
             if (false == parsed)
             {
                 parseErrorString = "Converting '" + input + "' to " + colorDescription + ", " + parseError;
-            }
-            else
-            {
-                colorStringOut = input;
             }
 
             return parsed;
@@ -241,13 +145,13 @@ namespace FLTTopoVSlice
         // ------------------------------------------------------
         static private Boolean parseBackgroundColor(String input, ref String parseErrorString)
         {
-            return parseColor(input, optionTypeToSpecDict[OptionType.BackgroundColor].Description, ref parseErrorString, ref backgroundColor, ref backgroundColorString);
+            return parseColor(input, optionTypeToSpecDict[OptionType.bgcolor].Description, ref parseErrorString, ref backgroundColor );
         }
 
         // ------------------------------------------------------
-        static private Boolean parseContourColor(String input, ref String parseErrorString)
+        static private Boolean parseGroundColor(String input, ref String parseErrorString)
         {
-            return parseColor(input, optionTypeToSpecDict[OptionType.ContourColor].Description, ref parseErrorString, ref contourColor, ref contourColorString);
+            return parseColor(input, optionTypeToSpecDict[OptionType.groundcolor].Description, ref parseErrorString, ref contourColor );
         }
 
         // --------------------------------------------------
@@ -321,23 +225,6 @@ namespace FLTTopoVSlice
         // -------------------------------------------------------------------- 
         static private void initOptionSpecifiers()
         {
-            directionToSpecifierDict = new Dictionary<DirectionType, OptionSpecifier>(Enum.GetNames(typeof(DirectionType)).Length);
-
-            // not crazy about these casts, will see how it works in practice
-            // TODO : more descriptive help text?
-            directionToSpecifierDict.Add(DirectionType.Left, new OptionSpecifier
-            {
-                Specifier = (DirectionType.Left).ToString(),
-                Description = "Left",
-                HelpText = ""
-            });
-            directionToSpecifierDict.Add(DirectionType.Right, new OptionSpecifier
-            {
-                Specifier = (DirectionType.Right).ToString(),
-                Description = "Right",
-                HelpText = ""
-            });
-
             optionTypeToSpecDict = new Dictionary<OptionType, OptionSpecifier>(Enum.GetNames(typeof(OptionType)).Length);
 
             optionTypeToSpecDict.Add(OptionType.HelpRequest, new OptionSpecifier
@@ -347,51 +234,44 @@ namespace FLTTopoVSlice
                 HelpText = ": print all available parameters",
                 ParseDelegate = parseHelpRequest
             });
-            optionTypeToSpecDict.Add(OptionType.OutputFile, new OptionSpecifier
+            optionTypeToSpecDict.Add(OptionType.outputfile, new OptionSpecifier
             {
-                Specifier = "outfilebase",
+                Specifier = OptionType.outputfile.ToString(),
                 Description = "Output file base name",
                 HelpText = "<OutputFile>: specifies output image file base name",
                 ParseDelegate = parseOutputFile
             });
-            optionTypeToSpecDict.Add(OptionType.BackgroundColor, new OptionSpecifier
+            optionTypeToSpecDict.Add(OptionType.bgcolor, new OptionSpecifier
             {
-                Specifier = "bgcolor",
+                Specifier = OptionType.bgcolor.ToString(),
                 Description = "Background color",
                 HelpText = "<RRGGBB>: Background Color (defaults to white)",
                 ParseDelegate = parseBackgroundColor
             });
-            optionTypeToSpecDict.Add(OptionType.ContourColor, new OptionSpecifier
+            optionTypeToSpecDict.Add(OptionType.groundcolor, new OptionSpecifier
             {
-                Specifier = "color",
+                Specifier = OptionType.groundcolor.ToString(),
                 Description = "Ground lines color",
                 HelpText = "<RRGGBB>: color of ground level lines in normal mode",
-                ParseDelegate = parseContourColor
+                ParseDelegate = parseGroundColor
             });
-            optionTypeToSpecDict.Add(OptionType.CornerA, new OptionSpecifier
+            optionTypeToSpecDict.Add(OptionType.cornerA, new OptionSpecifier
             {
-                Specifier = "cornerA",
+                Specifier = OptionType.cornerA.ToString(),
                 Description = "Corner A",
                 HelpText = "<lat,long>: Beginning of baseline forming one edge of rect",
                 ParseDelegate = parseCornerACoordinate
             });
-            optionTypeToSpecDict.Add(OptionType.CornerB, new OptionSpecifier
+            optionTypeToSpecDict.Add(OptionType.cornerB, new OptionSpecifier
             {
-                Specifier = "cornerB",
+                Specifier = OptionType.cornerB.ToString(),
                 Description = "Corner B",
                 HelpText = "<lat,long>: End of baseline forming one edge of rect",
                 ParseDelegate = parseCornerBCoordinate
             });
-            optionTypeToSpecDict.Add( OptionType.PerpendicularDir, new OptionSpecifier
+            optionTypeToSpecDict.Add(OptionType.width, new OptionSpecifier
             {
-                Specifier = "perpDir",
-                Description = "Perpendicular Direction",
-                HelpText = ": Direction of perpendicular to edge specified by CornerA->CornerB",
-                AllowedValues = directionToSpecifierDict.Values.ToList<OptionSpecifier>()
-            });
-            optionTypeToSpecDict.Add(OptionType.Width, new OptionSpecifier
-            {
-                Specifier = "width",
+                Specifier = OptionType.width.ToString(),
                 Description = "Width",
                 HelpText = ": width of rect along edge perpendicular to CornerA->CornerB",
                 ParseDelegate = parseWidth
@@ -412,76 +292,38 @@ namespace FLTTopoVSlice
         }
 
         // -------------------------------------------------------------------------------------
-        static private Boolean parseArgs(string[] args)
+        static private Boolean HandleNonMatchedParameter(String argString, ref String parseErrorString)
         {
-            Boolean parsed = true;
+            Boolean handled = false;
 
-            if (0 == args.Length)
+            // input file name (we think/hope)
+            // see if header and data files exist
+            if (System.IO.File.Exists(argString + "." + FLTDataLib.Constants.HEADER_FILE_EXTENSION)
+                    && System.IO.File.Exists(argString + "." + FLTDataLib.Constants.DATA_FILE_EXTENSION))
             {
-                parseErrorMessage = noInputsErrorMessage;
-                helpRequested = true;
-                parsed = false;
-            }
-            else
-            {
-                foreach (string currentArg in args)
+                // specifying more than one input file is not yet  supported
+                if (inputFileBaseName.Length > 0)
                 {
-                    if ('-' == currentArg.ElementAt(0))
-                    {
-                        String currentOptionString = currentArg.Substring(1); // skip dash
-                        Boolean matched = false;
-
-                        // try to match an option specifier
-                        foreach (var currentOptionSpec in optionTypeToSpecDict.Values)
-                        {
-                            if (currentOptionString.StartsWith(currentOptionSpec.Specifier))
-                            {
-                                matched = true;
-
-                                // skip specifier string
-                                currentOptionString = currentOptionString.Substring(currentOptionSpec.Specifier.Length);
-
-                                parsed = currentOptionSpec.ParseDelegate(currentOptionString, ref parseErrorMessage);
-                            }
-
-                            if (matched)
-                            {
-                                break;
-                            }
-                        }   // end foreach option spec
-
-                        // detect invalid options
-                        if (false == matched)
-                        {
-                            parseErrorMessage = "Unrecognized option : " + currentArg;
-                            parsed = false;
-                        }
-                    }
-                    else // no dash
-                    {
-                        // I'll specifically support no dash on ye olde help request
-                        // requesting help?
-                        if (HelpRequestChar == currentArg.ElementAt(0))
-                        {
-                            helpRequested = true;
-                        }
-                        else
-                        {
-                            // input file name (we think/hope)
-                            inputFileBaseName = currentArg;
-                        }
-                    }   // end else
-
-                    // if current parse failed get out
-                    if (false == parsed)
-                    {
-                        break;
-                    }
+                    parseErrorString = moreThanOneInputFileSpecifiedErrorString;
+                    handled = false;
+                }
+                else
+                {
+                    inputFileBaseName = argString;
+                    handled = true;
                 }
             }
 
+            return handled;
+        }
+
+        // -------------------------------------------------------------------------------------
+        static private Boolean parseArgs(string[] args)
+        {
+            Boolean parsed = OptionUtils.ParseSupport.ParseArgs(args, optionTypeToSpecDict.Values.ToList<OptionUtils.OptionSpecifier>(), HandleNonMatchedParameter, ref parseErrorMessage);
+
             // must specify input file
-            if (0 == inputFileBaseName.Length)
+            if (parsed && (0 == inputFileBaseName.Length))
             {
                 parseErrorMessage = noInputFileSpecifiedErrorMessage;
                 parsed = false;
@@ -496,18 +338,8 @@ namespace FLTTopoVSlice
             return parsed;
         }
 
-        // -------------------------------------------------------------------------------------
-        static private void reportOptionValues()
-        {
-            Console.WriteLine(ConsoleSectionSeparator);
-
-            Console.WriteLine("Input file base name : " + inputFileBaseName);
-
-            Console.WriteLine(optionTypeToSpecDict[OptionType.OutputFile].Description + " : " + outputFileBaseName);
-        }
-
         // --------------------------------------------------------------------------------------
-        static private void reportAvailableOptions()
+        static private void echoAvailableOptions()
         {
             // aww, no string multiply like Python
             const String indent = "  ";
@@ -523,8 +355,6 @@ namespace FLTTopoVSlice
             Console.WriteLine(indent + "Optional:");
             foreach (var currentOptionSpec in optionTypeToSpecDict.Values)
             {
-                // Note : hardwiring the dash in front of these optional parameters
-                // also note that description string immediately follows specifier
                 String currentParamString = indent2 + "-" + currentOptionSpec.Specifier + currentOptionSpec.HelpText;
 
                 Console.WriteLine(currentParamString);
@@ -538,12 +368,6 @@ namespace FLTTopoVSlice
                         Console.WriteLine(currentAllowedValueString);
                     }
                 }
-            }
-
-            Console.WriteLine("Notes:");
-            foreach (var currentNote in programNotes)
-            {
-                Console.WriteLine(currentNote);
             }
         }
 
@@ -572,7 +396,7 @@ namespace FLTTopoVSlice
 
                 if (helpRequested)
                 {
-                    reportAvailableOptions();
+                    echoAvailableOptions();
                 }
             }
 

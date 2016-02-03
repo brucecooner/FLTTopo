@@ -50,17 +50,17 @@ namespace FLTDataLib
         public string ByteOrder { get; set; }
 
         // longitude/latitude (degrees) of lower left corner of map data
-        public  float   XLowerLeftCorner { get; set; }
-        public  float   YLowerLeftCorner { get; set; }
+        public  double   XLowerLeftCorner { get; set; }
+        public  double   YLowerLeftCorner { get; set; }
 
         // degrees between map data points
-        public float    CellSize { get; set; }
+        public double    CellSize { get; set; }
 
         public int      NoDataValue { get; set; }
 
         // ---- calculated values ----
         // north/south size of map
-        public float HeightDegrees
+        public double HeightDegrees
         {
             get
             {
@@ -71,7 +71,7 @@ namespace FLTDataLib
             }
         }
         // east/west size of map
-        public float WidthDegrees
+        public double WidthDegrees
         {
             get
             {
@@ -83,7 +83,7 @@ namespace FLTDataLib
         }
 
         // coordinates (in degrees) of sides of map
-        public float WestLongitude
+        public double WestLongitude
         {
             get 
             { 
@@ -94,7 +94,7 @@ namespace FLTDataLib
             }
         }
 
-        public float SouthLatitude
+        public double SouthLatitude
         {
             get 
             { 
@@ -105,7 +105,7 @@ namespace FLTDataLib
             }
         }
 
-        public float NorthLatitude
+        public double NorthLatitude
         {
             get 
             {
@@ -116,7 +116,7 @@ namespace FLTDataLib
             }
         }
 
-        public float EastLongitude
+        public double EastLongitude
         {
             get
             {
@@ -127,9 +127,9 @@ namespace FLTDataLib
             }
         }
 
-        public float RowIndexToLatitude( int index )
+        public double RowIndexToLatitude( int index )
         {
-            float latitudeDegrees;
+            double latitudeDegrees;
 
             if ( IsInitialized() )
             {
@@ -150,9 +150,9 @@ namespace FLTDataLib
             return latitudeDegrees;
         }
 
-        public float ColumnIndexToLongitude( int index )
+        public double ColumnIndexToLongitude( int index )
         {
-            float longitudeDegrees;
+            double longitudeDegrees;
 
             if (IsInitialized())
             {
@@ -243,6 +243,31 @@ namespace FLTDataLib
 
             return westValid && northValid && eastValid && southValid;
         }
+
+        // --------------------------------------------------------------------------------------------------------
+        // validates the list of coordinates against this descriptor, invalid coordinates are placed in a list for return
+        // (so a null return value indicates no invalid coordinates)
+        public List< Tuple< double, double > > validateCoordinatesList( List< Tuple<double, double> > coordinates )
+        {
+            List< Tuple<double,double> > invalidCoordinates = null; //new List< Tuple<double,double> >(10);
+
+            foreach ( Tuple<double,double> coordinatePair in coordinates )
+            {
+                if (        ( false == ValidateLatitude( coordinatePair.Item1 ) )
+                        ||  ( false == ValidateLongitude( coordinatePair.Item2 ) )
+                    )
+                {
+                    if ( null == invalidCoordinates )
+                    {
+                        invalidCoordinates = new List<Tuple<double,double>>( coordinates.Count );
+                    }
+
+                    invalidCoordinates.Add( coordinatePair );
+                }
+            }
+
+            return invalidCoordinates;
+        }
     
         // --------------------------------------------------------------------------------------------------------
         // returns true if specified indices will result in a rectangle contained within the data
@@ -292,7 +317,7 @@ namespace FLTDataLib
         }
 
         // --------------------------------------------------------------------
-        public Boolean ValidateLongitude( float longitudeDegrees )
+        public Boolean ValidateLongitude( double longitudeDegrees )
         {
             Boolean valid = false;
 
@@ -314,7 +339,7 @@ namespace FLTDataLib
         }
 
         // --------------------------------------------------------------------
-        public Boolean ValidateLatitude(float latitudeDegrees)
+        public Boolean ValidateLatitude(double latitudeDegrees)
         {
             Boolean valid = false;
 
@@ -336,7 +361,7 @@ namespace FLTDataLib
         // --------------------------------------------------------------------
         // ---- conversion ----
         // converts longitude in degrees to a column index 
-        public int LongitudeToColumnIndex( float longitudeDegrees )
+        public int LongitudeToColumnIndex( double longitudeDegrees )
         {
             int index = 0;
 
@@ -345,7 +370,7 @@ namespace FLTDataLib
                 if ( ValidateLongitude( longitudeDegrees ) )
                 {
                     // how far into map is specified coordinate
-                    float fraction = Math.Abs( longitudeDegrees - WestLongitude) / WidthDegrees;
+                    double fraction = Math.Abs( longitudeDegrees - WestLongitude) / WidthDegrees;
 
                     fraction = Math.Max(0, Math.Min(1, fraction));  // ensure fraction is 0..1
 
@@ -361,7 +386,7 @@ namespace FLTDataLib
         }
 
         // ---------------------------------------------------------------------------
-        public int LatitudeToRowIndex(float latitudeDegrees )
+        public int LatitudeToRowIndex(double latitudeDegrees )
         {
             int index = 0;
 
@@ -369,7 +394,7 @@ namespace FLTDataLib
             {
                 if ( ValidateLatitude( latitudeDegrees ) )
                 {
-                    float fraction = (latitudeDegrees - SouthLatitude) / HeightDegrees;
+                    double fraction = (latitudeDegrees - SouthLatitude) / HeightDegrees;
 
                     fraction = Math.Max(0, Math.Min(1, fraction));  // ensure fraction is 0..1
 

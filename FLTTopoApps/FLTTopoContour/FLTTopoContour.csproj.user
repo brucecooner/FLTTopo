@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
-    <StartArguments>PHXWest</StartArguments>
+    <StartArguments>PHXWest recttlbr=6000,6000,10000,10000 contours=1000 maptype=verticalsliceew imgheight=150 outfile=vslice_ew_heightCalcTest/vsliceTest</StartArguments>
     <StartWorkingDirectory>C:\Users\Spazter\Documents\GitHub\Data\PHXWest\</StartWorkingDirectory>
   </PropertyGroup>
   <PropertyGroup>
@@ -15,7 +15,7 @@
     <VerifyUploadedFiles>false</VerifyUploadedFiles>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
-    <StartArguments>phxwest  phxwest</StartArguments>
+    <StartArguments>phxwest recttlbr=6000,6000,10000,8000 imgheight=500</StartArguments>
     <StartWorkingDirectory>C:\Users\Spazter\Documents\GitHub\Data\PHXWest\</StartWorkingDirectory>
   </PropertyGroup>
 </Project>

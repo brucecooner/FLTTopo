@@ -342,7 +342,7 @@ namespace FLTDataLib
             } // end for row
              */
 
-            // parallel scheme 2, no noticeable timing difference, both must be maxing out the cores
+            // parallel scheme 2, no noticeable timing difference
             Parallel.For( 0, NumRows * NumCols, currentValueIndex =>
                 {
                     int    dataIndex = currentValueIndex * FLTDataLib.Constants.FLT_FLOAT_SIZE;

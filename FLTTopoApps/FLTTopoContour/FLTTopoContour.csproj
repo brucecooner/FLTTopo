@@ -57,6 +57,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="VectorUtil.cs" />
     <Compile Include="OptionUtils.cs" />
     <Compile Include="TopoGenerators.cs" />
     <Compile Include="Program.cs" />

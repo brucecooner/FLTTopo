@@ -9,6 +9,7 @@ using FLTDataLib;
 
 
 // classes which (via common interface) generate topo map data in various forms
+// Note : doesn't do any validation on input parameters, assumes they have been validated against the data
 namespace FLTTopoContour
 {
     // base class
@@ -19,7 +20,9 @@ namespace FLTTopoContour
             Normal,
             AlternatingColors,
             Gradient,
-            HorizontalSlice
+            HorizontalSlice,
+            VerticalSliceNS,
+            VerticalSliceEW
         };
 
         // abstract to get name of generator
@@ -71,23 +74,34 @@ namespace FLTTopoContour
         protected Int32 _highColor          { get { return _colorsDict[colorType.gradhicolor.ToString()]; } }
 
         // ---- factory function ----
-        public static TopoMapGenerator getGenerator(TopoMapGenerator.MapType type, int contourHeights, FLTTopoData data, String outputFilename, int[] rectExtents)
+        public static TopoMapGenerator getGenerator(    TopoMapGenerator.MapType type, 
+                                                        int contourHeights, 
+                                                        FLTTopoData data, 
+                                                        String outputFilename, 
+                                                        int[] rectExtents, 
+                                                        int imageWidth, int imageHeight)
         {
             TopoMapGenerator generator = null;
 
             switch ( type )
             {
                 case MapType.Normal :
-                    generator = new NormalTopoMapGenerator(data, contourHeights, outputFilename, rectExtents);
+                    generator = new NormalTopoMapGenerator(data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight );
                     break;
                 case MapType.Gradient :
-                    generator = new GradientTopoMapGenerator(data, contourHeights, outputFilename, rectExtents);
+                    generator = new GradientTopoMapGenerator(data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight );
                     break;
                 case MapType.AlternatingColors :
-                    generator = new AlternatingColorContourMapGenerator(data, contourHeights, outputFilename, rectExtents);
+                    generator = new AlternatingColorContourMapGenerator(data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight );
                     break;
                 case MapType.HorizontalSlice :
-                    generator = new HorizontalSlicesTopoMapGenerator(data, contourHeights, outputFilename, rectExtents);
+                    generator = new HorizontalSlicesTopoMapGenerator(data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight );
+                    break;
+                case MapType.VerticalSliceNS :
+                    generator = new VerticalSlicesTopoMapGenerator(data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight, VerticalSlicesTopoMapGenerator.SliceDirectionType.NS );
+                    break;
+                case MapType.VerticalSliceEW :
+                    generator = new VerticalSlicesTopoMapGenerator(data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight, VerticalSlicesTopoMapGenerator.SliceDirectionType.EW );
                     break;
                 default:
                     throw new System.InvalidOperationException("unknown OutputModeType : " + type.ToString());
@@ -100,6 +114,7 @@ namespace FLTTopoContour
         protected String _outputFilename;
 
         // ---- rect extents ----
+        // TODO : consider changing this to use lat/long instead
         // consts to tell how to pack extents into an array
         public const int RectTopIndex = 0;
         public const int RectLeftIndex = 1;
@@ -114,7 +129,79 @@ namespace FLTTopoContour
         protected int rectRight { get { return _rectIndices[RectRightIndex]; } }
         protected int rectBottom { get { return _rectIndices[RectBottomIndex]; } }
 
-        // ---- timing ----
+        protected int rectWidth 
+        { 
+            get { return rectRight - rectLeft + 1; } 
+        }
+        protected int rectHeight 
+        {
+            get { return rectBottom - rectTop + 1; }    // remember that bottom > top due to storage (think of data like a bitmap/image)
+        }
+
+        // ---- image size ----
+        protected int _imageWidth
+        { get; set; }
+
+        protected int _imageHeight
+        { get; set; }
+
+        public static readonly Int32 ImageDimensionNotSpecifiedValue = Int32.MinValue;
+        static public bool ImageDimensionSpecified( int dimension )
+        {
+            return dimension != ImageDimensionNotSpecifiedValue ? true : false;
+        }
+
+        // ---------------------------------------------------------------------
+        // calculate image dimensions user did NOT specify
+        public virtual void DetermineImageDimensions()
+        {
+            if (        ( false == ImageDimensionSpecified( _imageHeight ) )
+                    &&  ( false == ImageDimensionSpecified( _imageWidth ) ) )
+            {
+                // neither specified, use dimensions of rect
+                _imageWidth = rectWidth;
+                _imageHeight = rectHeight;
+            }
+            else if (       ( ImageDimensionSpecified( _imageHeight ) )
+                        &&  ( false == ImageDimensionSpecified( _imageWidth ) ) )
+            {
+                // height specified, width was not, calculate width from height
+                _imageWidth = (int)(_imageHeight * (rectWidth / (float)rectHeight));
+
+            }
+            else if (       ( ImageDimensionSpecified( _imageWidth ) )
+                        &&  ( false == ImageDimensionSpecified( _imageHeight ) ) )
+            {
+                // width was specified, calculate height
+                _imageHeight = (int)(_imageWidth * (rectHeight / (float)rectWidth));
+            }
+        }
+
+        // ---- min/max ----
+        protected float _minElevationInRect = float.MaxValue;
+        protected float _maxElevationInRect = float.MinValue;
+
+        protected int _minElevationRow = 0;
+        protected int _minElevationColumn = 0;
+        protected int _maxElevationRow = 0;
+        protected int _maxElevationColumn = 0;
+
+        // -----------------------------------------------------
+        protected void findMinMax()
+        {
+            System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
+            stopwatch.Reset();
+            stopwatch.Start();
+
+            _data.FindMinMaxInRect( rectLeft, rectTop, rectRight, rectBottom,
+                                    ref _minElevationInRect, ref _minElevationRow, ref _minElevationColumn,
+                                    ref _maxElevationInRect, ref _maxElevationRow, ref _maxElevationColumn );
+
+            stopwatch.Stop();
+            addTiming("min/max discovery", stopwatch.ElapsedMilliseconds);
+        }
+
+        // ---- timing logging ----
         // function delegate to use when timings are desired from internal ops
         public delegate void addTimingDelegate(String entryName, float entryTimingMS);
 
@@ -126,34 +213,35 @@ namespace FLTTopoContour
         }
 
         // -------------------------------------------------------------------------
-        protected void addTiming( String timingEntryName, float timingEntryValue )
+        protected void addTiming( String timingEntryName, float timingEntryValueMS )
         {
             if ( null != addTimingHandler )
             {
-                addTimingHandler( timingEntryName, timingEntryValue );
+                addTimingHandler( timingEntryName, timingEntryValueMS );
             }
         }
 
         // ---- utility ----
         // ------------------------------------------------------------------------------------
-        // returns how many pixels will be in output image (does not account for pixel size)
+        // returns how many pixels will be in output image (does not account for pixel depth)
         protected int outputImagePixelCount()
         {
-            //int testsize = ( rectRightIndex - rectLeftIndex + 1 ) * ( rectBottomIndex - rectTopIndex + 1 );
-
-            return ( rectRight - rectLeft + 1) * (rectBottom - rectTop + 1);
+            //return ( rectRight - rectLeft + 1) * (rectBottom - rectTop + 1);
+            return _imageWidth * _imageHeight;
         }
 
         // --------------------------------------------------------------------------------
         protected int outputImageWidth()
         {
-            return rectRight - rectLeft + 1;
+            //return rectRight - rectLeft + 1;
+            return _imageWidth;
         }
 
         // --------------------------------------------------------------------------------
         protected int outputImageHeight()
         {
-            return rectBottom - rectTop + 1;
+            //return rectBottom - rectTop + 1;
+            return _imageHeight;
         }
 
         // ------------------------------------------------------
@@ -162,7 +250,8 @@ namespace FLTTopoContour
         public TopoMapGenerator(    FLTTopoData data,
                                     int contourHeights,
                                     String outputFilename,
-                                    int[] rectIndices
+                                    int[] rectIndices,
+                                    int imageWidth, int imageHeight
                                 )
         {
             _data = data;
@@ -180,20 +269,23 @@ namespace FLTTopoContour
                 _rectIndices = rectIndices;
             }
 
+            _imageWidth = imageWidth;
+            _imageHeight = imageHeight;
+
             addTimingHandler = null;
         }
 
         // ---------------------------------------------------------------------------------------------
-        protected void SaveBitmap( String outputFile, Int32[] pixels )
+        protected void SaveBitmap( String outputFile, Int32[] pixels, int forceWidth = 0, int forceHeight = 0 )
         {
             System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
             stopwatch.Reset();
             stopwatch.Start();
 
-            int width = outputImageWidth();
-            int height = outputImageHeight();
+            int width = forceWidth > 0 ? forceWidth : outputImageWidth();
+            int height = forceHeight > 0 ? forceHeight : outputImageHeight();
 
-            Bitmap bmp = new Bitmap(outputImageWidth(), outputImageHeight(), System.Drawing.Imaging.PixelFormat.Format32bppRgb);
+            Bitmap bmp = new Bitmap( width, height, System.Drawing.Imaging.PixelFormat.Format32bppRgb);
 
             System.Runtime.InteropServices.GCHandle handle = System.Runtime.InteropServices.GCHandle.Alloc(pixels, System.Runtime.InteropServices.GCHandleType.Pinned);
             try
@@ -208,7 +300,7 @@ namespace FLTTopoContour
                 //set the beginning of pixel data
                 //bmpData.Scan0 = pointer;
                 //System.Runtime.InteropServices.Marshal.Copy(pixels, 0, bmpData.Scan0, topoData.NumCols * topoData.NumRows());
-                System.Runtime.InteropServices.Marshal.Copy(pixels, 0, bmpData.Scan0, outputImagePixelCount());
+                System.Runtime.InteropServices.Marshal.Copy(pixels, 0, bmpData.Scan0, width * height );//outputImagePixelCount());
 
                 //Unlock the pixels
                 bmp.UnlockBits(bmpData);
@@ -226,222 +318,224 @@ namespace FLTTopoContour
             bmp.Dispose();
 
             stopwatch.Stop();
-            addTiming( "save bitmap: " + outputFile, stopwatch.ElapsedMilliseconds );
+            addTiming( "save bitmap", stopwatch.ElapsedMilliseconds );
 
         }
+
+        // ---- image pixels ----
+        // note : descendent classes must manage
+        protected Int32[] _pixels;
+
+        // ---- used to describe a row of the output image (its location in topo data, and coordinates of previous/next image rows) ----
+        private class ImageRowDescriptor
+        {
+            // it would be friendlier to use these as row indices into the topo data, but I may want to subsample some day
+            public double previousLatitude  { get; set; }   // latitude of previous row in data
+            public double currentLatitude   { get; set; }   // latitude of current row in data (row being generated)
+            public double nextLatitude      { get; set; }   // latitude of next row in data
+
+            public int imageY               { get; set; }   // image y coordinate of row
+
+            public ImageRowDescriptor( int y, double prevLat, double currentLat, double nextLat )
+            {
+                imageY = y;
+                previousLatitude = prevLat;
+                currentLatitude = currentLat;
+                nextLatitude = nextLat;
+            }
+        }
+
+        private List<ImageRowDescriptor>    _imageRowDescriptors;
 
         // ------------------------------------------------------------------------
         // the generator function (descendants override this to produce specific types of maps)
         public abstract void Generate();
-	}
+
+        // -----------------------------------------------------------------------------------
+        // 'default' form of generate function that just makes a single bitmap
+        protected void DefaultGenerate()
+        {
+            System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
+            stopwatch.Reset();
+            stopwatch.Start();
+
+            // need to use byte array for pixels
+            _pixels = new Int32[ outputImagePixelCount() ];
+
+            GenerationRowIterator();
+
+            stopwatch.Stop();
+            addTiming( "generating " + GetName() + " map", stopwatch.ElapsedMilliseconds );
+
+            // todo : copy next to last image rows to edge rows around image
+                /*
+                // copy second row of image to first row, and next to last row to last (fixes up edge lines that could not be calculated)
+                int nextToLastRowStartIndex = outputImageWidth() * (outputImageHeight() - 2);
+                int lastRowStartIndex = outputImageWidth() * (outputImageHeight() - 1);
+                for ( int column = 0; column < outputImageWidth(); ++column )
+                {
+                    pixels[ column ] = pixels[ outputImageWidth() + column ];
+                    pixels[lastRowStartIndex + column] = pixels[nextToLastRowStartIndex + column];
+                }
+                 * */
+
+            SaveBitmap( _outputFilename, _pixels );
+        }
+
+        // -----------------------------------------------------------------------------------
+        // generalized form of a function that steps over rows in the output image space
+        // (well, technically, it's stepping from 1,1 to imageWidth-1, imageHeight-1, since some algorithms use topo points to the left/right/top/bottom
+        // of the current sample)
+        // and generates a single bitmap from the current generator pixel delegate
+        protected void GenerationRowIterator()
+        {
+            // note : our iterators will move in lat/long coordinate space
+            // this sets up a three row 'window' that will move down the rows
+            double rectDegreesHeight = (rectBottom - rectTop + 1) * _data.Descriptor.CellSize;
+
+            double latitudeStepPerImageRow = rectDegreesHeight / outputImageHeight();               // latitude step per image row
+            double previousImageRowLatitude = _data.Descriptor.RowIndexToLatitude( rectTop );       // starting lat is the first row...
+            double currentImageRowLatitude = previousImageRowLatitude - latitudeStepPerImageRow;    // current is actually first row (in topo space)
+            double nextImageRowLatitude = currentImageRowLatitude - latitudeStepPerImageRow;        // and next is, er, next
+
+            _imageRowDescriptors = new List<ImageRowDescriptor>( outputImageHeight() - 2 );  // note : don't do top/bottom rows of image
+
+            // generate a list of row descriptors, one for each image row that will be generated
+            for ( int i = 1; i < outputImageHeight() - 1; ++i )
+            {
+                _imageRowDescriptors.Add( new ImageRowDescriptor( i, previousImageRowLatitude, currentImageRowLatitude, nextImageRowLatitude ) );
+
+                // shift the 'window' down
+                previousImageRowLatitude = currentImageRowLatitude;
+                currentImageRowLatitude = nextImageRowLatitude;
+                nextImageRowLatitude -= latitudeStepPerImageRow;
+            }
+
+            // parallel loop over row descriptors
+            // note : starting at image row 1 (not 0), and using outputImageHeight() to stop because parallel.for is exclusive on halting index
+            //for ( int rowDescIndex = 0; rowDescIndex < _imageRowDescriptors.Count; ++rowDescIndex )
+            Parallel.For( 0, _imageRowDescriptors.Count, rowDescIndex =>
+            {
+                GenerationColumnIterator( _imageRowDescriptors[ rowDescIndex ] );
+            } );
+        }
+
+        // delegate which calculates a single pixel in the output image, receives a 3,3 grid of the samples centered on the image pixel's height sample
+        // (note that samples may not be continuous in the source data, depending on the image scale being applied)
+        public delegate Int32 PixelCalculationDelegate( float[,] samples );
+
+        // descendent classes can override this, and GenerationColumnIterator() will call it with the 3x3 grid of samples to determine
+        // an individual pixel's value
+        protected PixelCalculationDelegate _generatorPixelDelegate;
+
+        // -----------------------------------------------------------------------------------
+        private void GenerationColumnIterator( ImageRowDescriptor imgRowDesc )
+        {
+            double rectWidthDegrees = (rectRight - rectLeft + 1) * _data.Descriptor.CellSize;
+
+            // TODO : unify col/row names
+            int previousTopoRowIndex = _data.Descriptor.LatitudeToRowIndex( imgRowDesc.previousLatitude );
+            int currentTopoRowIndex = _data.Descriptor.LatitudeToRowIndex( imgRowDesc.currentLatitude );
+            int nextTopoRowIndex = _data.Descriptor.LatitudeToRowIndex( imgRowDesc.nextLatitude );
+
+            // set up to move a 3 by 3 'window' across the row
+            float[,] samples = new float[3,3];
+
+            // could move in indices (integer) space, but might want to interpolate samples someday
+            double longitudeStepPerImagePixel = rectWidthDegrees / outputImageWidth();
+            double leftLongitude = _data.Descriptor.ColumnIndexToLongitude( rectLeft );
+            double currentLongitude = leftLongitude + longitudeStepPerImagePixel;
+            double rightLongitude = currentLongitude + longitudeStepPerImagePixel;
+
+            int leftSampleColumnIndex = _data.Descriptor.LongitudeToColumnIndex( leftLongitude );
+            int currentSampleColumnIndex = _data.Descriptor.LongitudeToColumnIndex( currentLongitude );
+            int rightSampleColumnIndex = _data.Descriptor.LongitudeToColumnIndex( rightLongitude );
+
+            // initialize the samples, centered over image's pixel at 1, imgRowDesc.y
+
+            // previous row
+            samples[0,0] = _data.ValueAt( previousTopoRowIndex, leftSampleColumnIndex ); 
+            samples[0,1] = _data.ValueAt( previousTopoRowIndex, currentSampleColumnIndex ); 
+            samples[0,2] = _data.ValueAt( previousTopoRowIndex, rightSampleColumnIndex );   
+
+            // current row (row pixel is on)
+            samples[1,0] = _data.ValueAt( currentTopoRowIndex, leftSampleColumnIndex );
+            samples[1,1] = _data.ValueAt( currentTopoRowIndex, currentSampleColumnIndex );
+            samples[1,2] = _data.ValueAt( currentTopoRowIndex, rightSampleColumnIndex );
+
+            // next row
+            samples[2,0] = _data.ValueAt( nextTopoRowIndex, leftSampleColumnIndex );
+            samples[2,1] = _data.ValueAt( nextTopoRowIndex, currentSampleColumnIndex );
+            samples[2,2] = _data.ValueAt( nextTopoRowIndex, rightSampleColumnIndex );
+
+            int pixelOffset = (imgRowDesc.imageY * outputImageWidth()) + 1; // start of output row
+
+            for ( int imageX = 1; imageX < outputImageWidth()-1; ++imageX )
+            {
+                _pixels[ pixelOffset ] = _generatorPixelDelegate( samples );
+                ++pixelOffset;  // point to next pixel
+
+                // move the window one pixel to the right (since the were set up already stepping at the rate, simple shifting should work here, and
+                // only the right side needs to advance)
+                rightLongitude += longitudeStepPerImagePixel;
+                rightSampleColumnIndex = _data.Descriptor.LongitudeToColumnIndex( rightLongitude );
+                samples[0,0] = samples[0,1];
+                samples[0,1] = samples[0,2];
+                samples[0,2] = _data.ValueAt( previousTopoRowIndex, rightSampleColumnIndex );
+
+                samples[1,0] = samples[1,1];
+                samples[1,1] = samples[1,2];
+                samples[1,2] = _data.ValueAt( currentTopoRowIndex, rightSampleColumnIndex );
+
+                samples[2,0] = samples[2,1];
+                samples[2,1] = samples[2,2];
+                samples[2,2] = _data.ValueAt( nextTopoRowIndex, rightSampleColumnIndex );
+            }
+
+        }
+
+        // -----------------------------------------------------------
+        // height value positional helpers, gets readings out of heights array based on relative direction 
+        protected float heightNW( float[,] heights ) { return heights[0,0]; }
+        protected float heightN( float[,] heights ) { return heights[0,1]; }
+        protected float heightNE( float[,] heights ) { return heights[0,2]; }
+
+        protected float heightW( float[,] heights ) { return heights[1,0]; }
+        protected float heightCurrent( float[,] heights ) { return heights[1,1]; }
+        protected float heightE( float[,] heights ) { return heights[1,2]; }
+
+        protected float heightSW( float[,] heights ) { return heights[2,0]; }
+        protected float heightS( float[,] heights ) { return heights[2,1]; }
+        protected float heightSE( float[,] heights ) { return heights[2,2]; }
+
+	}   // end class TopoMapGenerator
 
     // /////////////////////////////////////////////////////////////////////////////////////////////////////////
     public class NormalTopoMapGenerator : TopoMapGenerator
     {
-        public override String GetName() { return "normal"; }
+        public override String GetName() { return "contour"; }
 
         public NormalTopoMapGenerator(  FLTTopoData data,
                                         int contourHeights,
                                         String outputFilename,
-                                        int[] rectIndices
-                                        ) : base( data, contourHeights, outputFilename, rectIndices )
+                                        int[] rectIndices,
+                                        int imageWidth, int imageHeight
+                                        ) : base( data, contourHeights, outputFilename, rectIndices, imageWidth, imageHeight )
         {}
 
         // -----------------------------------------------------------------------------------------------
-        public override void Generate()
+        private Int32 normalTopoMapPixelDelegate( float[,] heights )
         {
-            System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
-            stopwatch.Reset();
-            stopwatch.Start();
-
-            _data.Quantize( _contourHeights );
-
-            stopwatch.Stop();
-            addTiming( "quantization", stopwatch.ElapsedMilliseconds );
-            stopwatch.Reset();
-            stopwatch.Start();
-#if false
-            // normal, slow way
-            Int32 currentPixel = blackPixel;
-
-            // serial operation
-            for ( int row = 1; row < topoData.NumRows(); ++row )
-            {
-                for ( int col = 1; col < topoData.NumCols; ++col )
-                {
-                    float   currentValue = topoData.ValueAt( row, col );
-                    float   aboveValue = topoData.ValueAt( row - 1, col );
-                    float   leftValue = topoData.ValueAt( row, col - 1 );
-
-                    currentPixel = ( ( currentValue != leftValue ) || ( currentValue != aboveValue ) ) ? blackPixel : whitePixel;
-
-                    contourMap.SetPixel( col, row, Color.FromArgb( currentPixel ) );
-                }
-            }
-#else
-            // need to use byte array for pixels
-            Int32[]     pixels = new Int32[ outputImagePixelCount() ];
-
-            // ------------------------------
-            // single pixel row computation (all contours same color)
-            Func<int, int>ComputePixelRowSingleColorContours = ( row ) =>
-            {
-                float   leftValue = _data.ValueAt( row, rectLeft );
-
-                // index to first pixel in row (in image space)
-                int     currentPixelIndex = (row - rectTop) * outputImageWidth();   
-
-                Int32   currentPixel = _backgroundColor;
-
-                for ( int col = rectLeft; col <= rectRight; ++col ) // note : moving in topo space
-                {
-                    float   aboveValue = _data.ValueAt( row - 1, col );
-                    float   currentValue = _data.ValueAt( row, col );
-
-                    currentPixel = ((currentValue != leftValue) || (currentValue != aboveValue)) ? _contourLineColor : _backgroundColor;
-
-                    pixels[ currentPixelIndex ] = currentPixel;
-
-                    ++currentPixelIndex;
-                    leftValue = currentValue;
-                }
-
-                return row;
-            };
-
-            // -----------------------------
-            // TODO : sort out the '+1' on the start row. They're there because the compute functions acccess currentRow-1, so you cannot start
-            // at row zero. So row zero of the bitmap is blank. Can ignore the +1 if rectTop is >0, otherwise fill the bitmap row 0 or something.
-            Parallel.For( rectTop + 1, rectBottom, row =>
-            {
-                ComputePixelRowSingleColorContours( row );
-            } );
-#endif
-
-            stopwatch.Stop();
-            addTiming( "generating normal map", stopwatch.ElapsedMilliseconds );
-
-            SaveBitmap( _outputFilename, pixels );
-        }   // end Generate()
-    }
-
-    // /////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public class AlternatingColorContourMapGenerator : TopoMapGenerator
-    {
-        public override String GetName() { return "alternating color"; }
-
-        public AlternatingColorContourMapGenerator( FLTTopoData data,
-                                                    int contourHeights,
-                                                    String outputFilename,
-                                                    int[] rectIndices
-                                                    ) : base( data, contourHeights, outputFilename, rectIndices )
-        {}
-
-        // -----------------------------------------------------------------------------------------------
-        public override void Generate()
-        {
-            System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
-            stopwatch.Reset();
-            stopwatch.Start();
-
-            _data.Quantize( _contourHeights );
-
-            stopwatch.Stop();
-            addTiming( "quantization", stopwatch.ElapsedMilliseconds );
-            stopwatch.Reset();
-            stopwatch.Start();
-
-            // need to use byte array for pixels
-            Int32[]     pixels = new Int32[ outputImagePixelCount() ];
-
-            // ------------------------------
-            // single pixel row computation (alternating color of odd/even contours)
-            Func<int, int> ComputePixelRowAlternatingColorContours = (row) =>
-            {
-                float leftValue = _data.ValueAt(row, 0);
-                // index to first pixel in row
-                int currentPixelIndex = (row - rectTop) * outputImageWidth();
-
-                Int32 currentPixel = _backgroundColor;
-
-                // note : looping in topo map space
-                for (int col = rectLeft; col <= rectRight; ++col)
-                {
-                    float aboveValue = _data.ValueAt(row - 1, col);
-                    float currentValue = _data.ValueAt(row, col);
-
-                    bool drawCurrent = ((currentValue != leftValue) || (currentValue != aboveValue)) ? true : false;
-
-                    float highestValue = currentValue;
-
-                    if (aboveValue > highestValue)
-                    {
-                        highestValue = aboveValue;
-                    }
-                    if (leftValue > highestValue)
-                    {
-                        highestValue = leftValue;
-                    }
-
-                    if (drawCurrent)
-                    {
-                        currentPixel = _backgroundColor;
-
-                        Int32 evenOdd = Convert.ToInt32(highestValue / _contourHeights % 2);
-
-                        if (evenOdd <= 0)
-                        {
-                            currentPixel = _color1;
-                        }
-                        else
-                        {
-                            currentPixel = _color2;
-                        }
-                    }
-                    else
-                    {
-                        currentPixel = _backgroundColor;
-                    }
-
-                    pixels[currentPixelIndex] = currentPixel;
-
-                    ++currentPixelIndex;
-                    leftValue = currentValue;
-                }
-
-                return row;
-            };
-
-            // -----------------------------
-            // TODO : sort out the '+1' on the start row. They're there because the compute functions acccess currentRow-1, so you cannot start
-            // at row zero. So row zero of the bitmap is blank. Can ignore the +1 if rectTop is >0, otherwise fill the bitmap row 0 or something.
-            Parallel.For( rectTop + 1, rectBottom, row =>
-            {
-                ComputePixelRowAlternatingColorContours( row );
-            } );
-
-            stopwatch.Stop();
-            addTiming( "generating alternating colors map", stopwatch.ElapsedMilliseconds );
-
-            SaveBitmap( _outputFilename, pixels );
+            // current != left OR current != above
+            return ( heightCurrent( heights ) != heightW(heights) || heightCurrent(heights) != heightN(heights)) ? _contourLineColor : _backgroundColor;
         }
-    }
-
-    // /////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public class GradientTopoMapGenerator : TopoMapGenerator
-    {
-        public override String GetName() { return "gradient"; }
-
-        public GradientTopoMapGenerator(    FLTTopoData data,
-                                            int contourHeights,
-                                            String outputFilename,
-                                            int[] rectIndices
-                                            ) : base( data, contourHeights, outputFilename, rectIndices )
-        {}
 
         // -----------------------------------------------------------------------------------------------
         public override void Generate()
         {
+            _generatorPixelDelegate = normalTopoMapPixelDelegate;
+
+            // -- quantize --
             System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
             stopwatch.Reset();
             stopwatch.Start();
@@ -453,83 +547,168 @@ namespace FLTTopoContour
             stopwatch.Reset();
             stopwatch.Start();
 
-            // get gradient color components
-            int lowRed = (_lowColor >> 16) & 0xFF;
-            int lowGreen = (_lowColor >> 8) & 0xFF;
-            int lowBlue = _lowColor & 0xFF;
-
-            int highRed = (_highColor >> 16) & 0xFF;
-            int highGreen = (_highColor >> 8) & 0xFF;
-            int highBlue = _highColor & 0xFF;
-
-            int redRange = highRed - lowRed;
-            int greenRange = highGreen - lowGreen;
-            int blueRange = highBlue - lowBlue;
-
-            // ---- helper func for converting normalized heights in map to color
-            var normalizedHeightToColor = new Func<float, Int32>( height => 
-            {
-                byte redValue = (byte)(lowRed + (height * redRange));
-                byte greenValue = (byte)(lowGreen + (height * greenRange));
-                byte blueValue = (byte)(lowBlue + (height * blueRange));
-
-                return (Int32)(((byte)0xFF << 24) | (redValue << 16) | (greenValue << 8) | blueValue);
-            });
-
-            // note that this finds the min/max of the quantized data, so will not be the true heights, but that's not important to accurately calculating
-            // the range
-            float minElevationInRect = 0;
-            int minElevationRow = 0, minElevationColumn = 0;
-
-            float maxElevationInRect = 0;
-            int maxElevationRow = 0, maxElevationColumn = 0;
-
-            stopwatch.Reset();
-            stopwatch.Start();
-
-            _data.FindMinMaxInRect( rectLeft, rectTop, rectRight, rectBottom,
-                                    ref minElevationInRect, ref minElevationRow, ref minElevationColumn,
-                                    ref maxElevationInRect, ref maxElevationRow, ref maxElevationColumn );
-
-            stopwatch.Stop();
-            addTiming("min/max discovery", stopwatch.ElapsedMilliseconds);
-            stopwatch.Reset();
-            stopwatch.Start();
-
-            float range = maxElevationInRect - minElevationInRect; //topoData.MaximumElevation - topoData.MinimumElevation;
-            float oneOverRange = 1.0f / range;
-
-            Int32[] pixels = new Int32[outputImagePixelCount()];
-
-            // generate grayscale bitmap from normalized topo data
-            // note : looping in TOPO MAP SPACE
-            //for (int row = 0; row < topoData.NumRows; ++row)
-            Parallel.For( rectTop, rectTop + outputImageHeight() - 1, row =>      // I think the "to" here should be + 1 the upper bound, docs say it is Exclusive
-            {
-                // compute offset of this row in OUTPUT IMAGE SPACE
-                int offset = (row - rectTop) * outputImageWidth();
-
-                //for (int col = 0; col < topoData.NumCols; ++col)
-                for (int col = rectLeft; col <= rectRight; ++col)
-                {
-                    float normalizedValue = (_data.ValueAt(row, col) - minElevationInRect) * oneOverRange;
-
-                    //bmp.SetPixel(col, row, Color.FromArgb(argb)); // seem to remember this being painfully slow
-                    pixels[offset] = normalizedHeightToColor(normalizedValue);// argb;
-                    ++offset;
-                }
-                //}   // end for row
-            });    // end parallel.for row
-
-            stopwatch.Stop();
-            addTiming( "generating gradient map", stopwatch.ElapsedMilliseconds );
-
-            SaveBitmap( _outputFilename, pixels );           
+            // can use default generator 
+            DefaultGenerate();
         }
-
     }
 
     // /////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public class AlternatingColorContourMapGenerator : TopoMapGenerator
+    {
+        public override String GetName() { return "alternating color"; }
+
+        public AlternatingColorContourMapGenerator( FLTTopoData data,
+                                                    int contourHeights,
+                                                    String outputFilename,
+                                                    int[] rectIndices,
+                                                    int imageWidth,
+                                                    int imageHeight
+                                                    ) : base( data, contourHeights, outputFilename, rectIndices, imageWidth, imageHeight )
+        {}
+
+        // -----------------------------------------------------------------------------------------------
+        private Int32 alternatingContourColorMapPixelDelegate( float[,] heights )
+        {
+            Int32 currentPixel = 0;
+
+            bool drawCurrent = ( heightCurrent( heights ) != heightW( heights ) || heightCurrent( heights ) != heightN( heights )) ? true : false;
+
+            float highestValue = heightCurrent( heights );
+
+            highestValue = Math.Max( highestValue, heightN( heights ) );
+            highestValue = Math.Max( highestValue, heightW( heights ) );
+
+            if ( drawCurrent )
+            {
+                currentPixel = _backgroundColor;
+
+                Int32 evenOdd = Convert.ToInt32(highestValue / _contourHeights % 2);
+
+                if (evenOdd <= 0)
+                {
+                    currentPixel = _color1;
+                }
+                else
+                {
+                    currentPixel = _color2;
+                }
+            }
+            else
+            {
+                currentPixel = _backgroundColor;
+            }
+
+            return currentPixel;
+        }
+
+        // -----------------------------------------------------------------------------------------------
+        public override void Generate()
+        {
+            // -- quantize --
+            System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
+            stopwatch.Reset();
+            stopwatch.Start();
+
+            _data.Quantize(_contourHeights);
+
+            stopwatch.Stop();
+            addTiming("quantization", stopwatch.ElapsedMilliseconds);
+            stopwatch.Reset();
+            stopwatch.Start();
+
+            _generatorPixelDelegate = alternatingContourColorMapPixelDelegate;
+
+            // can use default generator
+            DefaultGenerate();
+        }
+    }
+
+    // /////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public class GradientTopoMapGenerator : TopoMapGenerator
+    {
+        public override String GetName() { return "gradient"; }
+
+        public GradientTopoMapGenerator(    FLTTopoData data,
+                                            int contourHeights,
+                                            String outputFilename,
+                                            int[] rectIndices,
+                                            int imageWidth, int imageHeight
+                                            ) : base( data, contourHeights, outputFilename, rectIndices, imageWidth, imageHeight )
+        {}
+
+        // --- color precalcs ----
+        int _lowRed = 0;
+        int _lowGreen = 0;
+        int _lowBlue = 0;
+
+        int _highRed = 0;
+        int _highGreen = 0;
+        int _highBlue = 0;
+
+        int _redRange = 0;
+        int _greenRange = 0;
+        int _blueRange = 0;
+
+        float _oneOverRange = 0;
+
+        // ---- helper func for converting normalized heights in map to color ----
+        private Int32 normalizedHeightToColor( float height )
+        {
+            byte redValue = (byte)(_lowRed + (height * _redRange));
+            byte greenValue = (byte)(_lowGreen + (height * _greenRange));
+            byte blueValue = (byte)(_lowBlue + (height * _blueRange));
+
+            return (Int32)(((byte)0xFF << 24) | (redValue << 16) | (greenValue << 8) | blueValue);
+        }
+
+        // --------------------------------------------------------
+        private Int32 gradientTopoMapPixelDelegate( float[,] heights )
+        {
+            float normalizedValue = ( heightCurrent(heights) - _minElevationInRect) * _oneOverRange;
+
+            return normalizedHeightToColor(normalizedValue);// argb;
+        }
+
+        // -----------------------------------------------------------------------------------------------
+        public override void Generate()
+        {
+            _generatorPixelDelegate = gradientTopoMapPixelDelegate;
+
+            // -- quantize --
+            System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
+            stopwatch.Reset();
+            stopwatch.Start();
+
+            _data.Quantize(_contourHeights);
+
+            stopwatch.Stop();
+            addTiming("quantization", stopwatch.ElapsedMilliseconds);
+            stopwatch.Reset();
+            stopwatch.Start();
+
+            findMinMax();
+
+            float range = _maxElevationInRect - _minElevationInRect; 
+            _oneOverRange = 1.0f / range;
+
+            // -- precalcs --
+            _lowRed = (_lowColor >> 16) & 0xFF;
+            _lowGreen = (_lowColor >> 8) & 0xFF;
+            _lowBlue = _lowColor & 0xFF;
+
+            _highRed = (_highColor >> 16) & 0xFF;
+            _highGreen = (_highColor >> 8) & 0xFF;
+            _highBlue = _highColor & 0xFF;
+
+            _redRange = _highRed - _lowRed;
+            _greenRange = _highGreen - _lowGreen;
+            _blueRange = _highBlue - _lowBlue;
+
+            DefaultGenerate();
+        }
+    }   // end class GradientTopoMapGenerator
+
+    // ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public class HorizontalSlicesTopoMapGenerator : TopoMapGenerator
     {
         public override String GetName() { return "HSlice"; }
@@ -537,13 +716,98 @@ namespace FLTTopoContour
         public HorizontalSlicesTopoMapGenerator(    FLTTopoData data,
                                                     int contourHeights,
                                                     String outputFilename,
-                                                    int[] rectIndices
+                                                    int[] rectIndices,
+                                                    int imageWidth, int imageHeight
                                                     )
-            : base(data, contourHeights, outputFilename, rectIndices)
+            : base(data, contourHeights, outputFilename, rectIndices, imageWidth, imageHeight )
         {}
+
+        // which horizontal slice is being output on current iteration (needed in pixel delegate)
+        float _currentContourHeight;
+
+        // -----------------------------------------------------------------------------------------------
+        private Int32 horizontalSlicesPixelDelegate( float[,] heights )
+        {
+            /* // takes about 0.7 seconds for a 4k by 4k rect */
+            // test that pixel is on current contour, and ANY neighbor is on a lower step
+            /*
+            return              ( rowCenter[1] == currentContourRow )
+                            &&  (       ( rowAbove[0] < rowCenter[1] )
+                                    ||  ( rowAbove[1] < rowCenter[1] )
+                                    ||  ( rowAbove[2] < rowCenter[1] )
+                                    ||  ( rowCenter[0] < rowCenter[1] )
+                                    ||  ( rowCenter[2] < rowCenter[1] )
+                                    ||  ( rowBelow[0] < rowCenter[1] )
+                                    ||  ( rowBelow[1] < rowCenter[1] )
+                                    ||  ( rowBelow[2] < rowCenter[1] ) ) ? _contourLineColor : _backgroundColor;
+             */
+            float current = heightCurrent( heights );
+
+            return              ( current == _currentContourHeight )
+                            &&  (       (heightNW(heights) < current )
+                                    ||  (heightN(heights) < current )
+                                    ||  (heightNE(heights) < current )
+                                    ||  (heightW(heights) < current )
+                                    ||  (heightE(heights) < current )
+                                    ||  (heightSW(heights) < current )
+                                    ||  (heightS(heights) < current )
+                                    ||  (heightSE(heights) < current ) ) ? _contourLineColor : _backgroundColor;
+        }
 
         // -----------------------------------------------------------------------------------------------
         public override void Generate()
+        {
+            _generatorPixelDelegate = horizontalSlicesPixelDelegate;
+
+            System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
+            stopwatch.Reset();
+            stopwatch.Start();
+
+            // -- quantization --
+            _data.Quantize(_contourHeights);
+
+            stopwatch.Stop();
+            addTiming("quantization", stopwatch.ElapsedMilliseconds);
+            stopwatch.Reset();
+            stopwatch.Start();
+
+            // -- min/max discovery --
+            findMinMax();
+
+            // -- not using default generate func, so must manage pixels ourselves --
+            _pixels = new Int32[outputImagePixelCount()];
+
+            // since map data was quantized, all data in the map is already on contours, so we can start
+            // at the minimum discovered elevation, plus one 'step', since there won't be steps from any
+            // lower contours to the minimum elevation
+            _currentContourHeight = _minElevationInRect + _contourHeights;
+
+            float difference = _maxElevationInRect - _minElevationInRect;
+
+            // ----------------
+            // generate the maps...
+            while ( _currentContourHeight <= _maxElevationInRect )
+            {
+                Console.WriteLine( " processing contour height: " + _currentContourHeight );
+                stopwatch.Reset();
+                stopwatch.Start();
+
+                GenerationRowIterator();
+
+                stopwatch.Stop();
+                addTiming("generating map at contour height: " + _currentContourHeight, stopwatch.ElapsedMilliseconds);
+
+                String currentFilename = _outputFilename + "_" + Convert.ToInt32( _currentContourHeight );
+                SaveBitmap( currentFilename, _pixels );
+
+                // step up to next contour line
+                _currentContourHeight += _contourHeights;
+            }   // end while 
+        }
+
+        // -----------------------------------------------------------------------------------------------
+#if false
+        public void OLDGenerate()
         {
             System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
             stopwatch.Reset();
@@ -694,5 +958,352 @@ namespace FLTTopoContour
                 currentContour += _contourHeights;
             }
         }   // end Generate()
+#endif
     }   // end class
+
+    // ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public static class TupleExtensions
+    {
+        public static double Latitude( this Tuple<double, double> coord )
+        {
+            return coord.Item1;
+        }
+
+        public static double Longitude( this Tuple<double,double> coord )
+        {
+            return coord.Item2;
+        }
+
+        public static string LLString( this Tuple<double,double> coord )
+        {
+            return coord.Latitude() + "," + coord.Longitude();
+        }
+    }
+
+    // ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public class VerticalSlicesTopoMapGenerator : TopoMapGenerator
+    {
+        public enum SliceDirectionType
+        {
+            NS, // north/south
+            EW  // east/west
+        }
+
+        public override String GetName() { return "VSlice-" + _sliceDirection.ToString(); }
+
+        // useful constants
+        const double MilesPerArcMinute = 1.15077945;  // ye olde nautical mile, (the equatorial distance / 360) / 60 
+        const double MilesPerDegree = MilesPerArcMinute * 60.0f;    // about 69 miles (at the equator)
+        const double MetersPerMile = 1609.34;
+        const double MetersPerDegree = MetersPerMile * MilesPerDegree;
+        const double DegreesPerMeter = 1.0 / MetersPerDegree;
+
+        // how many meters of buffer to put above and below the ground lines in the vertical slices
+        const float BufferMeters = 100.0f;
+
+        // has to be calculated from flt data
+        double _metersPerCell = 0.0; //MetersPerDegree * _data.Descriptor.CellSize; // meters between data points (should be about 10)
+
+        private SliceDirectionType  _sliceDirection = SliceDirectionType.NS;    
+
+        // topo space distance between X coordinates in the picture 
+        Tuple<double,double>    _coordinateStepPerImagePixel = null;
+
+        public VerticalSlicesTopoMapGenerator(    FLTTopoData data,
+                                                    int contourHeights,
+                                                    String outputFilename,
+                                                    int[] rectIndices,
+                                                    int imageWidth, int imageHeight,
+                                                    SliceDirectionType sliceDir )
+            : base(data, contourHeights, outputFilename, rectIndices, imageWidth, imageHeight )
+        {
+            _sliceDirection = sliceDir;
+        }
+
+        // -----------------------------------------------------------------------------------------------
+        override public void DetermineImageDimensions()
+        { /* no effect, image dims handled by Generate() after some things have been calculated */ }
+
+        // -----------------------------------------------------------------------------------------------
+        //  NOTE : has some dependencies
+        private void DetermineImageDimensionsVSlice( SliceDescriptor sampleSlice )
+        {
+            // note : adding buffer distance below and above min and max elevations 
+            // (not needed in ALL slices, but ones that contain min and/or max should be buffered)
+            double elevationRange = _maxElevationInRect - _minElevationInRect + (BufferMeters * 2.0f);
+
+            if (        ( false == ImageDimensionSpecified( _imageHeight ) )
+                    &&  ( false == ImageDimensionSpecified( _imageWidth ) ) )
+            {
+                // neither specified...
+                // the image "width" is 1x1 with the output rect
+                // this means each pixel's real world width is the same a single data point's  (important below)
+                _imageWidth = ( SliceDirectionType.NS == _sliceDirection ) ? rectHeight : rectWidth; 
+
+                // the image "height" is the vertical range of readings the slices will cover, plus some buffer at top and bottom
+                // pixels, being square, are as tall as they are wide, which is the horizontal distance between data point cells 
+                _imageHeight = Convert.ToInt32( elevationRange / _metersPerCell );
+            }
+            else if (       ( ImageDimensionSpecified( _imageHeight ) )
+                        &&  ( false == ImageDimensionSpecified( _imageWidth ) ) )
+            {
+                // height specified, width was not, calculate width from height
+                // distance each pixel represents in specified height
+                double metersPerPixel = elevationRange / _imageHeight;
+
+                double sliceWidthDegrees = Vector.Ops.Length( sampleSlice.Start, sampleSlice.End );
+                double sliceWidthMeters = sliceWidthDegrees * MetersPerDegree;
+
+                _imageWidth = Convert.ToInt32( sliceWidthMeters / metersPerPixel );
+            }
+            else if (       ( ImageDimensionSpecified( _imageWidth ) )
+                        &&  ( false == ImageDimensionSpecified( _imageHeight ) ) )
+            {
+                // width was specified, calculate height
+                // determine scale factor on width (i.e. what is the width of a pixel at this size)
+                double sliceWidthDegrees = Vector.Ops.Length( sampleSlice.Start, sampleSlice.End );
+                double pixelsPerDegree = _imageWidth / sliceWidthDegrees;
+                double pixelsPerMeter = pixelsPerDegree * DegreesPerMeter;
+
+                _imageHeight = Convert.ToInt32( elevationRange * pixelsPerMeter );
+            }
+        }
+
+        // -----------------------------------------------------------------------------------------------
+        class SliceDescriptor
+        {
+            public String filename;
+
+            public Tuple<double, double> Start;
+            public Tuple<double, double> End;
+        }
+
+        // ------------------------------------------------------------------------------------------------
+        private Tuple<int,int> CoordinateToRowCol( Tuple<double,double> coordinate )
+        {
+            return new Tuple<int,int>( _data.Descriptor.LatitudeToRowIndex( coordinate.Latitude() ), _data.Descriptor.LongitudeToColumnIndex( coordinate.Longitude() ) );
+        }
+        private Tuple<int,int> CoordinateToRowCol( double latitude, double longitude )
+        {
+            return new Tuple<int,int>( _data.Descriptor.LatitudeToRowIndex( latitude ), _data.Descriptor.LongitudeToColumnIndex( longitude ) );
+        }
+
+        // -----------------------------------------------------------------------------------------------
+        // receives descriptor and ordinal at which file is being generated in the sequence (keeps files in order)
+        private String generateSliceFilename( SliceDescriptor desc, int fileSequenceIndex, bool appendCoordinate )
+        {
+            String filename ="";
+
+            // -- sequence index --
+            // surely 1000 numbers will be enough...for now
+            filename = _outputFilename + "_vs" + _sliceDirection.ToString() + "_" + fileSequenceIndex.ToString("D4");
+
+            // -- coordinate --
+            if ( appendCoordinate )
+            {
+                if ( _sliceDirection == SliceDirectionType.NS )
+                {
+                    filename += "_long_" + desc.Start.Longitude().ToString("F4");
+                }
+                else
+                {
+                    filename += "_lat_" + desc.Start.Latitude().ToString("F4");
+                }
+            }
+
+            return filename;
+        }
+
+        // -----------------------------------------------------------------------------------------------
+        // iterates over the line between the coordinates start->end, stepping by degreesBetweenSlices, and 
+        // generating a slice descriptor at each step that goes from current location to current location + sliceDelta
+        private List<SliceDescriptor> generateSliceDescriptors( Tuple<double,double> start, Tuple<double,double> end, 
+                                                                double degreesBetweenSlices,
+                                                                Tuple<double,double> sliceDelta )
+        {
+            System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
+            stopwatch.Reset();
+            stopwatch.Start();
+
+            // determine how many slices will be generated
+            var startEndDelta = Vector.Ops.Delta( start, end );
+
+            // length of delta
+            double startEndDeltaDegrees = Vector.Ops.Length( startEndDelta );
+
+            // note : add 1 because the division determines the count of spaces -between- slices
+            int numSlices = (int)(startEndDeltaDegrees / degreesBetweenSlices) + 1;
+
+            var slices = new List<SliceDescriptor>( numSlices );
+
+            // need normalized length start->end delta
+            var normalizedStartEndDelta = Vector.Ops.Normalize( startEndDelta );
+
+            // now need coincident vector, but sized to degrees step
+            var deltaStep = Vector.Ops.Scale( normalizedStartEndDelta, degreesBetweenSlices );
+
+            // starting point of current slice
+            double currentStartLatitude = start.Item1;
+            double currentStartLongitude = start.Item2;
+
+            for ( int currentSliceIndex = 0; currentSliceIndex < numSlices; ++currentSliceIndex )
+            {
+                var slice = new SliceDescriptor();
+
+                // -- generate coordinates --
+                slice.Start = new Tuple<double, double>( currentStartLatitude, currentStartLongitude );
+                slice.End = new Tuple<double,double>( currentStartLatitude + sliceDelta.Latitude(), currentStartLongitude + sliceDelta.Longitude());
+
+                // -- generate filename --
+                // TODO : make coordinate appending optional
+                slice.filename = generateSliceFilename( slice, currentSliceIndex, true );
+
+                slices.Add( slice );
+
+                currentStartLatitude += deltaStep.Latitude();
+                currentStartLongitude += deltaStep.Longitude();
+            }
+
+            stopwatch.Stop();
+            addTiming( "generate slice descriptors", stopwatch.ElapsedMilliseconds );
+
+            return slices;
+        }
+
+        // ---------------------------------------------------------------------------------------------------------
+        public override void Generate()
+        {
+            List<SliceDescriptor> slices = null;
+
+            findMinMax();
+
+            // meters between data points (about 10 for 1/3 arcsecond data)
+            _metersPerCell = MetersPerDegree * _data.Descriptor.CellSize; 
+
+            double westLongitude = _data.Descriptor.ColumnIndexToLongitude( rectLeft );
+            double eastLongitude = _data.Descriptor.ColumnIndexToLongitude( rectRight );
+            double northLatitude = _data.Descriptor.RowIndexToLatitude( rectTop );
+            double southLatitude = _data.Descriptor.RowIndexToLatitude( rectBottom );
+
+            // -- generate slice descriptors --
+            if ( SliceDirectionType.NS == _sliceDirection )
+            {
+                // go from east to west across rect
+                var slicesStart = new Tuple<double,double>( northLatitude, westLongitude );
+                var slicesEnd = new Tuple<double,double>( northLatitude, eastLongitude );
+                // generating slices from north to south
+                var slicesDelta = new Tuple<double,double>( southLatitude - northLatitude, 0 );
+
+                slices = generateSliceDescriptors( slicesStart, slicesEnd, _contourHeights * DegreesPerMeter, slicesDelta );
+            }
+            else // east/west slices
+            {
+                // go from north to south down rect
+                var slicesStart = new Tuple<double,double>( northLatitude, westLongitude );
+                var slicesEnd = new Tuple<double,double>( southLatitude, westLongitude );
+                var slicesDelta = new Tuple<double,double>( 0, eastLongitude - westLongitude );
+
+                slices = generateSliceDescriptors( slicesStart, slicesEnd, _contourHeights * DegreesPerMeter, slicesDelta );
+            }
+
+            // -- process slices --
+            if ( slices.Count > 0 )
+            {
+                // now that slices are built, can determine image dimensions
+                DetermineImageDimensionsVSlice( slices[0] );
+                Console.WriteLine( "Image size(WxH) : " + _imageWidth + " x " + _imageHeight );
+
+                // -- prepare pixel buffer
+                _pixels = new Int32[ outputImagePixelCount() ];
+
+                // generate images from slice descriptors
+                processSliceDescriptors( slices );
+            }
+        }
+
+        // -----------------------------------------------------------------------------------------------
+        private void processSliceDescriptors( List<SliceDescriptor> slices )
+        {
+            // -- pre calcs --
+            // how far to step in topo coordinate space per image pixel
+            var sliceDelta = Vector.Ops.Delta( slices[0].Start, slices[0].End );
+
+            double sliceDegreesWidth = Vector.Ops.Length( sliceDelta );
+            // scaling imgWidth over sliceDegreesWidth
+            var sliceDeltaNormalized = Vector.Ops.Normalize( sliceDelta );
+
+            _coordinateStepPerImagePixel = Vector.Ops.Scale( sliceDeltaNormalized, sliceDegreesWidth / _imageWidth );
+
+            foreach( SliceDescriptor currentSliceDesc in slices )
+            {
+                generateSlice( currentSliceDesc );
+            }
+        }
+
+        // -----------------------------------------------------------------------------------------------
+        private void fillPixelBuffer( Int32 color )
+        {
+            if ( null == _pixels )
+            {
+                throw new System.InvalidOperationException( "pixel buffer not initialized" );
+            }
+
+            for ( int i = 0; i < outputImagePixelCount(); ++i )
+            {
+                _pixels[i] = color;
+            }
+        }
+
+        // -----------------------------------------------------------------------------------------------
+        private void generateSlice( SliceDescriptor sliceDesc )
+        {
+            Console.WriteLine( "generating file = " + sliceDesc.filename );  
+            System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
+            stopwatch.Reset();
+            stopwatch.Start();
+
+            fillPixelBuffer( _backgroundColor );
+
+            // -- inits --
+            double currentLatitude = sliceDesc.Start.Latitude();
+            double currentLongitude = sliceDesc.Start.Longitude();
+
+            var startRowCol = CoordinateToRowCol( sliceDesc.Start );
+            var endRowCol = CoordinateToRowCol( sliceDesc.End );
+
+            // note this is elevation range in image, which includes buffers at top/bottom
+            float elevationRange = (_maxElevationInRect - _minElevationInRect) + (BufferMeters * 2);
+            // scale elevation range to image width
+            float pixelsPerMeter = _imageHeight / elevationRange; 
+
+            // -- loop over image x axis --
+            for ( int currentImageX = 0; currentImageX < _imageWidth; ++currentImageX )
+            {
+                // what point in data is current image column looking 'down' on ?
+                var currentRowCol = CoordinateToRowCol( currentLatitude, currentLongitude );
+                var currentHeight = _data.ValueAt( currentRowCol.Item1, currentRowCol.Item2 );
+
+                // the 'y' in the bitmap of the groundline is analogous to the height data at the current point in the topo data (converted to
+                // pixels)
+                //int groundPixelHeight = Convert.ToInt32((BufferMeters + (currentHeight - _minElevationInRect)) / _metersPerCell);
+                int groundPixelHeight = Convert.ToInt32((currentHeight - BufferMeters)* pixelsPerMeter);
+
+                // note : subtract from image height because bitmap y coordinates are 0 at the top ,increasing downward
+                int currentImageY = Math.Max( _imageHeight - groundPixelHeight, 0 );
+
+                _pixels[ (currentImageY * _imageWidth) + currentImageX ] = _contourLineColor;
+                
+                currentLatitude += _coordinateStepPerImagePixel.Latitude();
+                currentLongitude += _coordinateStepPerImagePixel.Longitude();
+            }
+
+            stopwatch.Stop();
+            addTiming( "generate slice", stopwatch.ElapsedMilliseconds );
+
+            SaveBitmap( sliceDesc.filename, _pixels );
+        }
+
+
+    }
+
 }

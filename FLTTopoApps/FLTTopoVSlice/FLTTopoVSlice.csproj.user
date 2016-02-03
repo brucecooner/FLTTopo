@@ -1,0 +1,7 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
+    <StartArguments>width=10 phxwest cornerA=33.080654,-112.201417 cornerB=33.310113,-112.429473</StartArguments>
+    <StartWorkingDirectory>C:\Users\Spazter\Documents\GitHub\Data\PHXWest\</StartWorkingDirectory>
+  </PropertyGroup>
+</Project>

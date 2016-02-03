@@ -34,15 +34,17 @@ using OptionUtils;
     -config file?
     -suppress output option?
     -is my capitalization all over the place?
-    -return error codes from Main?
     - add 'mark coordinates' option ?
+    - only use coordinates (internally)
+    - optionally mark vertical slices files with coordinates
+    - vertical scale option for v slices
  * */
 
 namespace FLTTopoContour
 {
     class Program
     {
-        const float versionNumber = 1.4f;
+        const float versionNumber = 1.5f;
 
         // different options the user specifies
         enum OptionType
@@ -60,15 +62,19 @@ namespace FLTTopoContour
             GradientLoColor,    // color at lowest point in gradient mode
             GradientHiColor,    // color at highest point in gradient mode
             RectIndices,        // specifies rectangle within topo data to process/output by indices into the grid of points
-            RectCoords          // specifies rectangle within topo data to process/output by (floating point) latitude and longitude coordinates 
+            RectCoords,         // specifies rectangle within topo data to process/output by (floating point) latitude and longitude coordinates 
+            ImageHeight,        // desired height of output image
+            ImageWidth          // desired width of output image (only width OR height may be specified)
         };
 
         // TODO : settle on a capitalization scheme here!!!
 
         // CONSTANTS
-        const String noInputsErrorMessage = "No inputs.";
-        const String noInputFileSpecifiedErrorMessage = "No input file specified.";
-        const String moreThanOneInputFileSpecifiedErrorString = "More than one input file specified.";
+        const String NoInputsErrorMessage = "No inputs.";
+        const String NoInputFileSpecifiedErrorMessage = "No input file specified.";
+        const String MoreThanOneInputFileSpecifiedErrorString = "More than one input file specified.";
+        const String ImageWidthAndHeightSpecifiedErrorString = "Image width and height both specified, only one dimension may be\nspecified, and the other will be calculated.";
+        const String ImageDimensionLTEZeroErrorMessage = " was less than or equal to zero.";
         const String ConsoleSectionSeparator = "- - - - - - - - - - -";
         const String BannerMessage = "FLT Topo Data Contour Generator (run with '?' for options list)";  // "You wouldn't like me when I'm angry."
         const char HelpRequestChar = '?';
@@ -149,25 +155,42 @@ namespace FLTTopoContour
         static Int32 rectRightIndex;
         static Int32 rectBottomIndex;
 
+        // desired image size
+        static Int32 imageWidth = TopoMapGenerator.ImageDimensionNotSpecifiedValue;
+        static Int32 imageHeight = TopoMapGenerator.ImageDimensionNotSpecifiedValue;
+
         // list of single line operating notes
         static List<String> programNotes = null;
 
         // ---- timing ----
         // timing logs
-        static List<Tuple<String, float>> timingLog = new List<Tuple<String, float>>(20);
+        // float = total time, int = total readings
+        static Dictionary< String, Tuple<float, int>> timingLog = new Dictionary< String, Tuple<float, int>>(20);
 
-        static void addTiming( String timingEntryName, float timingEntryValueMS )
-        { timingLog.Add( Tuple.Create<String,float>( timingEntryName, timingEntryValueMS / 1000.0f ) ); }
+        static void addTiming(String timingEntryName, float timingEntryValueMS)
+        { 
+            if ( timingLog.ContainsKey( timingEntryName ) )
+            {
+                // add to existing entry
+                var existing = timingLog[ timingEntryName ];
 
-        static void PrintTimings()
+                timingLog[ timingEntryName ] = Tuple.Create<float,int>( existing.Item1 + timingEntryValueMS, existing.Item2 + 1 );
+            }
+            else // new entry
+            {
+                timingLog[ timingEntryName ] = Tuple.Create<float,int>( timingEntryValueMS, 1 );
+            }
+        }
+
+        static void echoTimings()
         {
             String indent = "  ";
 
-            Console.WriteLine( ConsoleSectionSeparator );
-            Console.WriteLine( "Timings:" );
-            foreach( var entry in timingLog )
+            Console.WriteLine(ConsoleSectionSeparator);
+            Console.WriteLine("Timings (average) :");
+            foreach (var entry in timingLog)
             {
-                Console.WriteLine( indent + entry.Item1 + " took " + entry.Item2 + " seconds." );
+                Console.WriteLine(indent + entry.Key + " : " + (entry.Value.Item1 / entry.Value.Item2) / 1000.0 + " seconds.");
             }
         }
 
@@ -416,6 +439,48 @@ namespace FLTTopoContour
             return parsed;
         }
 
+        // ----------------------------------------------------------------------
+        static private bool parseImageWidth( String input, ref String parseErrorString )
+        {
+            bool parsed =true;
+
+            int width;
+
+            parsed = Int32.TryParse( input,  out width );
+
+            if ( parsed )
+            {
+                imageWidth = width;
+            }
+            else
+            {
+                parseErrorString = "Unable to get image width from '" + input + "'";
+            }
+
+            return parsed;
+        }
+
+        // ----------------------------------------------------------------------
+        static private bool parseImageHeight( String input, ref String parseErrorString )
+        {
+            bool parsed =true;
+
+            int height;
+
+            parsed = Int32.TryParse( input,  out height );
+
+            if ( parsed )
+            {
+                imageHeight = height;
+            }
+            else
+            {
+                parseErrorString = "Unable to get image height from '" + input + "'";
+            }
+
+            return parsed;
+        }
+
         // --------------------------------------------------------------------
         static private void initProgramNotes()
         {
@@ -432,12 +497,14 @@ namespace FLTTopoContour
                 programNotes.Add( "-Rect 'top' and 'bottom' indices are actually reversed (top < bottom), since topo data is stored from north to south." );
                 programNotes.Add( "-If a rect is specified in both indices and coordinates, the indices will be ignored." );
                 programNotes.Add( "-The equal sign between options and values may be omitted (e.g. : gradlocolorFF0000)." );
+                programNotes.Add( "-If only imgWidth or imgHeight is specified, the other is calculated\nwith respect to the aspect ratio of the input rect." );
             }
         }
 
         // -------------------------------------------------------------------- 
         static private void initOptionSpecifiers()
         {
+            // -- map type options --
             mapTypeToSpecifierDict = new Dictionary< TopoMapGenerator.MapType, OptionSpecifier>( Enum.GetNames(typeof(TopoMapGenerator.MapType)).Length);
 
             // TODO : more descriptive help text?
@@ -457,6 +524,14 @@ namespace FLTTopoContour
                 new OptionSpecifier {   Specifier = TopoMapGenerator.MapType.HorizontalSlice.ToString().ToLower(),
                                         Description = "Horizontal slice",
                                         HelpText = "normal map, but each contour in a separate image." } );
+            mapTypeToSpecifierDict.Add(TopoMapGenerator.MapType.VerticalSliceNS,
+                new OptionSpecifier {   Specifier = TopoMapGenerator.MapType.VerticalSliceNS.ToString().ToLower(),
+                                        Description = "Vertical slice" + NorthString + "/" + SouthString,
+                                        HelpText = "vertical slices, oriented " + NorthString + "/" + SouthString + " at <contourHeights> intervals"} );
+            mapTypeToSpecifierDict.Add(TopoMapGenerator.MapType.VerticalSliceEW,
+                new OptionSpecifier {   Specifier = TopoMapGenerator.MapType.VerticalSliceEW.ToString().ToLower(),
+                                        Description = "Vertical slice" + EastString + "/" + WestString,
+                                        HelpText = "vertical slices, oriented " + EastString + "/" + WestString + " at <contourHeights> intervals"} );
 
             optionTypeToSpecDict = new Dictionary< OptionType, OptionSpecifier>( Enum.GetNames(typeof(OptionType)).Length );
 
@@ -529,6 +604,16 @@ namespace FLTTopoContour
                                                                                         HelpText = "<"+NorthString+","+WestString+","+SouthString+","+EastString+"> specifies grid by (floating point) lat/long values",
                                                                                         ParseDelegate = parseRectCoordinates,
                                                                                         ExpectsValue = true });
+            optionTypeToSpecDict.Add(OptionType.ImageWidth, new OptionSpecifier{        Specifier="imgwidth",
+                                                                                        Description = "Image Width",
+                                                                                        HelpText = "<width> output image width",
+                                                                                        ParseDelegate = parseImageWidth,
+                                                                                        ExpectsValue = true });
+            optionTypeToSpecDict.Add(OptionType.ImageHeight, new OptionSpecifier{       Specifier="imgheight",
+                                                                                        Description = "Image Height",
+                                                                                        HelpText = "<height> output image height",
+                                                                                        ParseDelegate = parseImageHeight,
+                                                                                        ExpectsValue = true });
         }
 
         // --------------------------------------------------------------------------------------
@@ -591,7 +676,7 @@ namespace FLTTopoContour
                 // specifying more than one input file is not yet  supported
                 if (inputFileBaseName.Length > 0)
                 {
-                    parseErrorString = moreThanOneInputFileSpecifiedErrorString;
+                    parseErrorString = MoreThanOneInputFileSpecifiedErrorString;
                     handled = false;
                 }
                 else
@@ -612,7 +697,7 @@ namespace FLTTopoContour
             // must specify input file
             if ( parsed && (0 == inputFileBaseName.Length) )
             {
-                parseErrorMessage = noInputFileSpecifiedErrorMessage;
+                parseErrorMessage = NoInputFileSpecifiedErrorMessage;
                 parsed = false;
             }
 
@@ -651,6 +736,13 @@ namespace FLTTopoContour
             {
                 Console.WriteLine( "No rect specified, defaulting to entire map." );
             }
+        }
+
+        // -------------------------------------------------------------------------------------
+        static private void echoImageSize()
+        {
+            Console.WriteLine( "Image width: " + (TopoMapGenerator.ImageDimensionSpecified( imageWidth ) ? imageWidth.ToString() : "not specified" ) );
+            Console.WriteLine( "Image height: " + (TopoMapGenerator.ImageDimensionSpecified( imageHeight ) ? imageHeight.ToString() : "not specified" ) );
         }
 
         // -------------------------------------------------------------------------------------
@@ -698,6 +790,7 @@ namespace FLTTopoContour
                 }
 
                 echoRectExtents();
+                echoImageSize();
             }
         }
 
@@ -808,6 +901,76 @@ namespace FLTTopoContour
         }
 
         // ---------------------------------------------------------------------------------------------------------------------
+        // must be called after rect options are validated and input rect indices are calculated
+        private static bool validateImageSizeOptions( FLTTopoData data )
+        {
+            bool validated = true;
+
+            if ( TopoMapGenerator.ImageDimensionSpecified( imageWidth ) )
+            {
+                // validate
+                if ( imageWidth <= 0 )
+                {
+                    Console.WriteLine( "specified " + optionTypeToSpecDict[ OptionType.ImageWidth].Description + ImageDimensionLTEZeroErrorMessage );
+                    validated = false;
+                }
+            }
+
+            if ( TopoMapGenerator.ImageDimensionSpecified( imageHeight ) )
+            {
+                if ( imageHeight <= 0 )
+                {
+                    Console.WriteLine( "specified " + optionTypeToSpecDict[ OptionType.ImageHeight].Description + ImageDimensionLTEZeroErrorMessage );
+                    validated = false;
+                }
+            }
+
+            /*
+            int rectWidth = rectRightIndex - rectLeftIndex + 1;    // TODO : maybe DRY this
+            int rectHeight = rectBottomIndex - rectTopIndex + 1;
+
+            if (        ( ImageDimensionNotSpecifiedValue == imageWidth )
+                    &&  ( ImageDimensionNotSpecifiedValue == imageHeight ) )
+            {
+                // neither specified, use rect size
+                imageWidth = rectWidth;
+                imageHeight = rectHeight;
+            }
+            else if (       ( ImageDimensionNotSpecifiedValue == imageWidth )
+                        &&  ( ImageDimensionNotSpecifiedValue != imageHeight ) )
+            {
+                // height specified, validate it is > 0
+                if ( imageHeight <= 0 )
+                {
+                    Console.WriteLine( ImageDimensionLTEZeroErrorMessage );
+                    validated = false;
+                }
+                else
+                {
+                    imageWidth = (int)(imageHeight * (rectWidth / (float)rectHeight));
+                }
+            }
+            else if (       ( ImageDimensionNotSpecifiedValue == imageHeight )
+                        &&  ( ImageDimensionNotSpecifiedValue != imageWidth ) )
+            {
+                // width specified, validate it is > 0
+                if ( imageWidth <= 0 )
+                {
+                    Console.WriteLine( ImageDimensionLTEZeroErrorMessage );
+                    validated = false;
+                }
+                else
+                {
+                    // width was specified, calculate height
+                    imageHeight = (int)(imageWidth * (rectHeight / (float)rectWidth));
+                }
+            }
+            // else user specified both, no changes
+            */
+            return validated;
+        }
+
+        // ---------------------------------------------------------------------------------------------------------------------
         private static void dataReport( FLTTopoData data )
         {
             String indent = "  ";
@@ -857,37 +1020,6 @@ namespace FLTTopoContour
             Console.WriteLine();
         }
 
-        // ----------------------------------------------------------------------------------------------------------------------
-        /*
-        static TopoMapGenerator generatorFactory( TopoMapGenerator.MapType mapType, int contourHeights, FLTTopoData data, String outputFilename, int[] rectExtents )
-        {
-            TopoMapGenerator generator = null;
-
-            switch ( outputMode )
-            {
-                case OutputModeType.Normal :
-                    generator = new NormalTopoMapGenerator( data, contourHeights, outputFilename, rectExtents );
-                    break;
-                case OutputModeType.Gradient :
-                    generator = new GradientTopoMapGenerator(data, contourHeights, outputFilename, rectExtents);
-                    break;
-                case OutputModeType.Alternating :
-                    generator = new AlternatingColorContourMapGenerator(data, contourHeights, outputFilename, rectExtents);
-                    break;
-                case OutputModeType.Slice :
-                    generator = new HorizontalSlicesTopoMapGenerator( data, contourHeights, outputFilename, rectExtents );
-                    break;
-                default:
-                    throw new System.InvalidOperationException( "unknown OutputModeType : " + outputMode.ToString() );
-            }
-
-            generator.setColorsDict( colorsDict );
-            generator.addTimingHandler = addTiming;
-
-            return generator;
-        }
-        */
-
         // -------------------------------------------------------------
         static void initColorsDictionary()
         {
@@ -905,8 +1037,11 @@ namespace FLTTopoContour
 
         // -------------------------------------------------------------------------------------------------------------------
         // -------------------------------------------------------------------------------------------------------------------
-        static void Main(string[] args)
+        static int Main(string[] args)
         {
+            const int ReturnErrorCode = 1;
+            const int ReturnSuccess = 0;
+
             // ----- startup -----
             initOptionSpecifiers();
             initProgramNotes();
@@ -937,6 +1072,8 @@ namespace FLTTopoContour
                 {
                     Console.WriteLine("\n(run with '" + HelpRequestChar + "' to see help)");
                 }
+
+                return ReturnErrorCode;
             }
             else // args parsed successfully
             {
@@ -945,9 +1082,6 @@ namespace FLTTopoContour
                     echoAvailableOptions();
                     echoProgramNotes();
                 }
-
-                // report current options
-                echoSettingsValues();
 
                 System.Console.WriteLine( ConsoleSectionSeparator );
 
@@ -958,7 +1092,7 @@ namespace FLTTopoContour
                 }
                 catch 
                 { 
-                    return; 
+                    return ReturnErrorCode; 
                 }
 
                 // ---- validate rect options ----
@@ -968,17 +1102,32 @@ namespace FLTTopoContour
 
                     if (false == rectValidated)
                     {
-                        return; // TODO : error code?
+                        return ReturnErrorCode;
                     }
                 }
-                catch { return; }
+                catch { return ReturnErrorCode; }
+
+                // ---- validate image size options ----
+                try
+                {
+                    Boolean imageSizeValidated = validateImageSizeOptions(topoData);
+
+                    if (false == imageSizeValidated)
+                    {
+                        return ReturnErrorCode;
+                    }
+                }
+                catch { return ReturnErrorCode; }
+
+                // report current options
+                echoSettingsValues();
 
                 // ---- read data ----
                 try
                 {
                     readData(topoData, inputFileBaseName);
                 }
-                catch { return; }
+                catch { return ReturnErrorCode; }
 
                 // ---- process ----
                 if ( dataReportOnly )
@@ -994,7 +1143,8 @@ namespace FLTTopoContour
                     rectExtents[ TopoMapGenerator.RectRightIndex ] = rectRightIndex;
                     rectExtents[ TopoMapGenerator.RectBottomIndex ] = rectBottomIndex;
 
-                    TopoMapGenerator generator = TopoMapGenerator.getGenerator( outputMapType, contourHeights, topoData, outputFileName, rectExtents );
+                    TopoMapGenerator generator = TopoMapGenerator.getGenerator( outputMapType, contourHeights, topoData, outputFileName, rectExtents, imageWidth, imageHeight );
+                    generator.DetermineImageDimensions();
                     generator.setColorsDict(colorsDict);
                     generator.addTimingHandler = addTiming;
 
@@ -1007,11 +1157,13 @@ namespace FLTTopoContour
 
                 if ( reportTimings )
                 {
-                    PrintTimings();
+                    echoTimings();
                 }
 
                 System.Console.WriteLine();
             }   // end if args parsed successfully
+
+            return ReturnSuccess;   // this should maybe be in the else proceed block above, and return an error if execution went here
         }   // end Main()
 
     }   // end class Program

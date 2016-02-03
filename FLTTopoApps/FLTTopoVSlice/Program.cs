@@ -50,16 +50,29 @@ namespace FLTTopoVSlice
             bgcolor,            // color of 'ground' between contour lines
             groundcolor         // color of contour lines 
         };
+        // TODO : add timing option
 
         // ---- CONSTANTS ----
         const String noInputsErrorMessage = "No inputs.";
         const String noInputFileSpecifiedErrorMessage = "No input file specified.";
         const String moreThanOneInputFileSpecifiedErrorString = "More than one input file specified.";
+        const String cornerANotSpecifiedErrorMessage = "Corner A not specified.";
+        const String cornerBNotSpecifiedErrorMessage = "Corner B not specified.";
+        const String widthNotSpecifiedErrorMessage = "Width not specified.";
+
         const String ConsoleSectionSeparator = "- - - - - - - - - - -";
         const String BannerMessage = "FLT Topo Data Vertical Slicer (run with '?' for options list)";  // "You wouldn't like me when I'm angry."
         const char HelpRequestChar = '?';
         const String LatitudeString = "Latitude";
         const String LongitudeString = "Longitude";
+        const String NorthString = "north";
+        const String EastString = "east";
+        const String SouthString = "south";
+        const String WestString = "west";
+        const char NorthChar = 'N';
+        const char EastChar = 'E';
+        const char SouthChar = 'S';
+        const char WestChar = 'W';
 
         const float floatNotSpecifiedValue = float.MaxValue;
 
@@ -89,13 +102,65 @@ namespace FLTTopoVSlice
 
         static Int32 contourColor = DefaultContourColor;
 
-        static float cornerALatitude = floatNotSpecifiedValue;
-        static float cornerALongitude = floatNotSpecifiedValue;
+        // specified by user
+        static double cornerALatitude = floatNotSpecifiedValue;
+        static double cornerALongitude = floatNotSpecifiedValue;
 
-        static float cornerBLatitude = floatNotSpecifiedValue;
-        static float cornerBLongitude = floatNotSpecifiedValue;
+        static double cornerBLatitude = floatNotSpecifiedValue;
+        static double cornerBLongitude = floatNotSpecifiedValue;
 
-        static float rectWidth = floatNotSpecifiedValue;
+        static double rectWidth = floatNotSpecifiedValue;
+
+        // generated based on AB and Width
+        static double cornerCLatitude = floatNotSpecifiedValue;
+        static double cornerCLongitude = floatNotSpecifiedValue;
+
+        static double cornerDLatitude = floatNotSpecifiedValue;
+        static double cornerDLongitude = floatNotSpecifiedValue;
+
+        static int  cornerARow;
+        static int  cornerAColumn;
+
+        static int  cornerBRow;
+        static int  cornerBColumn;
+
+        static int  cornerCRow;
+        static int  cornerCColumn;
+
+        static int  cornerDRow;
+        static int  cornerDColumn;
+
+        // ---- timing ----
+        // timing logs
+        // float = total time, int = total readings
+        static Dictionary< String, Tuple<float, int>> timingLog = new Dictionary< String, Tuple<float, int>>(20);
+
+        static void addTiming(String timingEntryName, float timingEntryValueMS)
+        { 
+            if ( timingLog.ContainsKey( timingEntryName ) )
+            {
+                // add to existing entry
+                var existing = timingLog[ timingEntryName ];
+
+                timingLog[ timingEntryName ] = Tuple.Create<float,int>( existing.Item1 + timingEntryValueMS, existing.Item2 + 1 );
+            }
+            else // new entry
+            {
+                timingLog[ timingEntryName ] = Tuple.Create<float,int>( timingEntryValueMS, 1 );
+            }
+        }
+
+        static void echoTimings()
+        {
+            String indent = "  ";
+
+            Console.WriteLine(ConsoleSectionSeparator);
+            Console.WriteLine("Timings:");
+            foreach (var entry in timingLog)
+            {
+                Console.WriteLine(indent + entry.Key + " took an average of " + entry.Value.Item1 / entry.Value.Item2 + " seconds.");
+            }
+        }
 
         // ------------------------------------------------
         static private Boolean parseHelpRequest(String input, ref String parseErrorString)
@@ -155,11 +220,11 @@ namespace FLTTopoVSlice
         }
 
         // --------------------------------------------------
-        static private Boolean parseCoordinate(String str, String coordName, ref float coordinateValue, ref String parseErrorString)
+        static private Boolean parseCoordinate(String str, String coordName, ref double coordinateValue, ref String parseErrorString)
         {
             Boolean parsed = false;
 
-            parsed = float.TryParse(str, out coordinateValue);
+            parsed = double.TryParse(str, out coordinateValue);
 
             if (!parsed)
             {
@@ -170,7 +235,7 @@ namespace FLTTopoVSlice
         }
 
         // ------------------------------------------------------------
-        static private Boolean parseLatLong( String input, ref float latitude, ref float longitude, ref String parseErrorString )
+        static private Boolean parseLatLong( String input, ref double latitude, ref double longitude, ref String parseErrorString )
         {
             Boolean parsed = true;
 
@@ -212,7 +277,7 @@ namespace FLTTopoVSlice
         {
             Boolean parsed = true;
 
-            parsed = float.TryParse( input, out rectWidth );
+            parsed = double.TryParse( input, out rectWidth );
 
             if ( false == parsed )
             {
@@ -371,6 +436,209 @@ namespace FLTTopoVSlice
             }
         }
 
+        // --------------------------------------------------------------------------------------
+        static private void echoProgramNotes()
+        {
+            Console.WriteLine();
+            Console.WriteLine("Notes:");
+            foreach (var currentNote in programNotes)
+            {
+                Console.WriteLine(currentNote);
+            }
+        }
+
+        // -------------------------------------------------------------------------------------
+        static private void echoSettingsValues()
+        {
+            Console.WriteLine(ConsoleSectionSeparator);
+
+            // TODO : automate?
+            Console.WriteLine("Input file base name : " + inputFileBaseName);
+
+            Console.WriteLine(optionTypeToSpecDict[OptionType.outputfile].Description + " : " + outputFileBaseName );
+
+            Console.WriteLine( "CornerA : " + cornerALatitude + "," + cornerALongitude );
+            Console.WriteLine( "CornerB : " +cornerBLatitude + "," + cornerBLongitude );
+
+            // only report colors if changed from default
+            Console.WriteLine( "TODO : FINISH SETTINGS FEEDBACK" );
+        }
+
+        // -------------------------------------------------------------------------------------------------------------------
+        static private void readDescriptor(FLTTopoData data, String inputFileBaseName)
+        {
+            try
+            {
+                data.ReadHeaderFile(inputFileBaseName);
+            }
+            catch
+            {
+                throw;
+            }
+        }
+
+        // -----------------------------------------------------------------------------------------------------------------------
+        static private void readData(FLTTopoData data, String inputFileBaseName)
+        {
+            System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
+            stopwatch.Reset();
+            stopwatch.Start();
+
+            try
+            {
+                data.ReadDataFile(inputFileBaseName);
+            }
+            catch
+            {
+                throw;
+            }
+
+            stopwatch.Stop();
+
+            addTiming("data read", stopwatch.ElapsedMilliseconds);
+        }
+
+        // -------------------------------------------------------------------------------------------------------------------
+        // generates four corners of rect specified by user
+        // NOTE : DOES NO VALIDATION ON COORDINATES
+        static void generateRectCorners(FLTTopoData data, List<String> invalidCoordinates )
+        {
+            const double MilesPerArcMinute = 1.15077945;  // ye olde nautical mile, (the equatorial distance / 360) / 60 
+            const double MilesPerDegree = MilesPerArcMinute * 60.0f;    // about 69 miles (at the equator)
+            const double DegreesPerMile = 1.0 / MilesPerDegree;
+
+            Console.WriteLine("TODO : FINISH RECT VALIDATION");
+
+            /*
+             We want a rect outlined by corners A,B,C,D. The user provides A and B, and the width (in some units, miles for now) of
+             the rect perpendicular to AB. Assuming a clockwise winding of the points and that latitude and longitude 
+             form a right handed coordinate system (z representing increasing altitude), generate C and D.
+             NOTE : This math works in continuous coordinates of degrees.
+             NOTE : Nothing here accounts for changes in latitude with longitude. There will be errors at higher latitudes, but as
+             the source data is "square" at any latitude this math will work without making any corrections.
+            */
+            // create perpendicular to given edge
+            double ABLatDelta = cornerBLatitude - cornerALatitude;
+            double ABLongDelta = cornerBLongitude - cornerALongitude;
+
+            double ABLength = Math.Abs( Math.Sqrt((ABLatDelta * ABLatDelta) + (ABLongDelta * ABLongDelta)) );
+
+            // need normalized length of AB
+            double ABLatDeltaNorm = ABLatDelta / ABLength;
+            double ABLongDeltaNorm = ABLongDelta / ABLength;
+
+            // generate normalized perpendicular to AB
+            double ABPerpLatDeltaNorm = ABLongDeltaNorm * -1;
+            double ABPerpLongDeltaNorm = ABLatDeltaNorm;
+
+            // generate perpendicular to AB, sized to Width
+            // TODO : for now assuming width is in miles, may work with other units later
+            double widthInDegrees = rectWidth * DegreesPerMile;
+            double ABPerpLatDelta = ABPerpLatDeltaNorm * widthInDegrees;
+            double ABPerpLongDelta = ABPerpLongDeltaNorm * widthInDegrees;
+
+            Console.WriteLine( "ABPerpLatDelta = " + ABPerpLatDelta );
+            Console.WriteLine( "ABPerpLongDelta = " + ABPerpLongDelta );
+
+            // add the perp delta to A to generate D (remember that points wind around)
+            cornerDLatitude = cornerALatitude + ABPerpLatDelta;
+            cornerDLongitude = cornerALongitude + ABPerpLongDelta;
+
+            // add the perp delta to B to generate C
+            cornerCLatitude = cornerBLatitude + ABPerpLatDelta;
+            cornerCLongitude = cornerBLongitude + ABPerpLongDelta;
+        }
+
+        // -------------------------------------------------------------------------------------
+        static void echoMapData( FLTTopoData data )
+        {
+            String indent = "  ";
+            Console.WriteLine( indent + "Map extents:" );
+            Console.WriteLine( indent + indent + WestString + " : " + data.Descriptor.WestLongitude );
+            Console.WriteLine( indent + indent + NorthString + " : " + data.Descriptor.NorthLatitude );
+            Console.WriteLine( indent + indent + EastString + " : " + data.Descriptor.EastLongitude );
+            Console.WriteLine( indent + indent + SouthString + " : " + data.Descriptor.SouthLatitude );
+            Console.WriteLine( indent + "Map Size (degrees):" );
+            Console.WriteLine( indent + indent + EastString + "/" + WestString + " : " + data.Descriptor.WidthDegrees );
+            Console.WriteLine( indent + indent + NorthString + "/" + SouthString + " : " + data.Descriptor.WidthDegrees);
+        }
+
+        // ------------------------------------------------------------------------------------------------------------------
+        static Boolean validateCornerCoordinates( FLTTopoData data )
+        {
+            var coordinates = new List<Tuple<double,double>>( 4 );
+
+            coordinates.Add( new Tuple<double,double>( cornerALatitude, cornerALongitude ) );
+            coordinates.Add( new Tuple<double,double>( cornerBLatitude, cornerBLongitude ) );
+            coordinates.Add( new Tuple<double,double>( cornerCLatitude, cornerBLongitude ) );
+            coordinates.Add( new Tuple<double,double>( cornerDLatitude, cornerDLongitude ) );
+
+            var invalidCoordinates = data.Descriptor.validateCoordinatesList( coordinates );
+
+            if ( invalidCoordinates.Count > 0 )
+            {
+                Console.WriteLine( "Specified rect bounds were not all within map.\nInvalid coordinates:");
+                foreach ( var coords in invalidCoordinates )
+                {
+                    Console.WriteLine( "  " + coords.Item1 + "," + coords.Item2 );
+                }
+            }
+
+            return null == invalidCoordinates ? true : false;
+        }
+
+        // ------------------------------------------------------------------------------------------------------------
+        // converts rect lat/long coordinates to indices in topo data, and prepares for rasterization of the rect
+
+        static void generateRectIndices( FLTTopoData data )
+        {
+            // convert to indices
+            cornerARow = data.Descriptor.LatitudeToRowIndex( cornerALatitude );
+            cornerAColumn = data.Descriptor.LongitudeToColumnIndex( cornerALongitude );
+
+            cornerBRow = data.Descriptor.LatitudeToRowIndex( cornerBLatitude );
+            cornerBColumn = data.Descriptor.LongitudeToColumnIndex( cornerBLongitude );
+
+            cornerCRow = data.Descriptor.LatitudeToRowIndex( cornerCLatitude );
+            cornerCColumn = data.Descriptor.LongitudeToColumnIndex( cornerCLongitude );
+
+            cornerDRow = data.Descriptor.LatitudeToRowIndex( cornerDLatitude );
+            cornerDColumn = data.Descriptor.LongitudeToColumnIndex( cornerDLongitude );
+
+            // detect some particular cases that simplify rasterization
+
+            // is AB oriented north/south?
+            if ( cornerAColumn == cornerBColumn )
+            {
+                // must know if AB is on east or west side
+                if ( cornerARow > cornerBRow )
+                {
+                    // cornerA is south of cornerB (because topo data rows increase from north to south
+                    // so, due to clockwise winding of points...
+                    /*  B--C
+                     *  |  |
+                     *  A--D */
+                }
+                else // cornerARow < cornerBRow
+                {
+                    /*
+                     * D--A
+                     * |  |
+                     * C--B */
+                }
+            }
+            else if ( cornerARow == cornerBRow ) // is AB oriented east/west?
+            {
+            }
+            else // rect is diagonally oriented
+            {
+                // orient points around rect so that A is the northernmost corner
+            }
+
+
+
+        }
+
         // -------------------------------------------------------------------------------------
         // -------------------------------------------------------------------------------------
         // -------------------------------------------------------------------------------------
@@ -398,6 +666,83 @@ namespace FLTTopoVSlice
                 {
                     echoAvailableOptions();
                 }
+            }
+            else
+            {
+                if (helpRequested)
+                {
+                    echoAvailableOptions();
+                    echoProgramNotes();
+                }
+
+                // validate that we got corners A/B and a width
+                // ugh, TODO : clean this up maybe
+                if (        (floatNotSpecifiedValue == cornerALatitude)
+                        ||  (floatNotSpecifiedValue == cornerALongitude))
+                {
+                    Console.WriteLine( "\nError : " + cornerANotSpecifiedErrorMessage );
+                    return;
+                }
+                else if (       (floatNotSpecifiedValue == cornerBLatitude)
+                            ||  (floatNotSpecifiedValue == cornerBLongitude))
+                {
+                    Console.WriteLine("\nError : " + cornerBNotSpecifiedErrorMessage );
+                    return;
+                }
+                else if ( floatNotSpecifiedValue == rectWidth )
+                {
+                    Console.WriteLine("\nError : " + widthNotSpecifiedErrorMessage );
+                    return;
+                }
+
+                // report current options
+                echoSettingsValues();
+
+                // ---- read descriptor -----
+                try
+                {
+                    readDescriptor(topoData, inputFileBaseName);
+                }
+                catch
+                {
+                    return;
+                }
+                
+                // ---- echo map data ----
+                Console.WriteLine( ConsoleSectionSeparator );
+                echoMapData( topoData );
+
+                // ---- generate/validate rect corners ----
+                try
+                {
+                    var invalidCoordinates = new List<String>(10);
+                    Console.WriteLine( "Generating rect corners..." );
+                    generateRectCorners(topoData, invalidCoordinates);
+
+                    Console.WriteLine( "cornerA : " + cornerALatitude + "," + cornerALongitude );
+                    Console.WriteLine( "cornerB : " + cornerBLatitude + "," + cornerBLongitude );
+                    Console.WriteLine( "cornerC : " + cornerCLatitude + "," + cornerCLongitude );
+                    Console.WriteLine( "cornerD : " + cornerDLatitude + "," + cornerDLongitude );
+
+                    if ( false == validateCornerCoordinates( topoData ) )
+                    {
+                        return;
+                    }
+                }
+                catch { return; }
+
+                // ---- 
+                generateRectIndices( topoData );
+
+
+                // ---- read data ----
+                try
+                {
+                    readData(topoData, inputFileBaseName);
+                }
+                catch { return; }
+
+                Console.WriteLine( "TODO : FINISH OUTPUT");
             }
 
         }   // end Main()

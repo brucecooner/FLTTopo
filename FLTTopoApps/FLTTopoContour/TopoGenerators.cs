@@ -73,38 +73,55 @@ namespace FLTTopoContour
         protected Int32 _lowColor           { get { return _colorsDict[colorType.gradlocolor.ToString()]; } }
         protected Int32 _highColor          { get { return _colorsDict[colorType.gradhicolor.ToString()]; } }
 
+        // ///////////////////////////////////////////////////////////////////////////////////////////////////
+        // used when constructing a generator (so I don't have to rewrite ALL the constructors when I add more parameters)
+        public class GeneratorSetupData
+        {
+            public TopoMapGenerator.MapType Type
+            { get; set; }
+            public int ContourHeights
+            { get; set; }
+            public FLTTopoData Data
+            { get; set; }
+            public String OutputFilename
+            { get; set; }
+            public int[] RectIndices
+            { get; set; }
+            public  int ImageWidth
+            { get; set; }
+            public int ImageHeight
+            { get; set; }
+            public Boolean AppendCoordinatesToFilenames
+            { get; set; }
+        };
+
         // ---- factory function ----
-        public static TopoMapGenerator getGenerator(    TopoMapGenerator.MapType type, 
-                                                        int contourHeights, 
-                                                        FLTTopoData data, 
-                                                        String outputFilename, 
-                                                        int[] rectExtents, 
-                                                        int imageWidth, int imageHeight)
+        public static TopoMapGenerator getGenerator( GeneratorSetupData setupData )
         {
             TopoMapGenerator generator = null;
 
-            switch ( type )
+            switch ( setupData.Type )
             {
                 case MapType.Normal :
-                    generator = new NormalTopoMapGenerator(data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight );
+                    generator = new NormalTopoMapGenerator( setupData );//data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight );
                     break;
                 case MapType.Gradient :
-                    generator = new GradientTopoMapGenerator(data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight );
+                    generator = new GradientTopoMapGenerator( setupData );//data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight );
                     break;
                 case MapType.AlternatingColors :
-                    generator = new AlternatingColorContourMapGenerator(data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight );
+                    generator = new AlternatingColorContourMapGenerator( setupData );//data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight );
                     break;
                 case MapType.HorizontalSlice :
-                    generator = new HorizontalSlicesTopoMapGenerator(data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight );
+                    generator = new HorizontalSlicesTopoMapGenerator( setupData );//data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight );
                     break;
                 case MapType.VerticalSliceNS :
-                    generator = new VerticalSlicesTopoMapGenerator(data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight, VerticalSlicesTopoMapGenerator.SliceDirectionType.NS );
+                    generator = new VerticalSlicesTopoMapGenerator( VerticalSlicesTopoMapGenerator.SliceDirectionType.NS, setupData );//data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight, VerticalSlicesTopoMapGenerator.SliceDirectionType.NS );
                     break;
                 case MapType.VerticalSliceEW :
-                    generator = new VerticalSlicesTopoMapGenerator(data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight, VerticalSlicesTopoMapGenerator.SliceDirectionType.EW );
+                    generator = new VerticalSlicesTopoMapGenerator( VerticalSlicesTopoMapGenerator.SliceDirectionType.EW, setupData );//data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight, VerticalSlicesTopoMapGenerator.SliceDirectionType.EW );
                     break;
                 default:
-                    throw new System.InvalidOperationException("unknown OutputModeType : " + type.ToString());
+                    throw new System.InvalidOperationException("unknown OutputModeType : " + setupData.Type.ToString());
             }
 
             return generator;
@@ -247,30 +264,33 @@ namespace FLTTopoContour
         // ------------------------------------------------------
         // ---- constructor ----
         // note : as the generators are pixel focused, we'll only work with indices into the topo data (for now)
-        public TopoMapGenerator(    FLTTopoData data,
+        public TopoMapGenerator( GeneratorSetupData setupData )
+        {
+        /*
+            (    FLTTopoData data,
                                     int contourHeights,
                                     String outputFilename,
                                     int[] rectIndices,
                                     int imageWidth, int imageHeight
                                 )
-        {
-            _data = data;
+         */
+            _data = setupData.Data;
 
-            _contourHeights = contourHeights;
+            _contourHeights = setupData.ContourHeights;
 
-            _outputFilename = outputFilename;
+            _outputFilename = setupData.OutputFilename;
 
-            if ( rectIndices.Length < 4 )
+            if ( setupData.RectIndices.Length < 4 )
             {
-                throw new System.InvalidOperationException( "Expected four indices, got : " + rectIndices.Length );
+                throw new System.InvalidOperationException( "Expected four indices, got : " + setupData.RectIndices.Length );
             }
             else
             {
-                _rectIndices = rectIndices;
+                _rectIndices = setupData.RectIndices;
             }
 
-            _imageWidth = imageWidth;
-            _imageHeight = imageHeight;
+            _imageWidth = setupData.ImageWidth;
+            _imageHeight = setupData.ImageHeight;
 
             addTimingHandler = null;
         }
@@ -515,12 +535,8 @@ namespace FLTTopoContour
     {
         public override String GetName() { return "contour"; }
 
-        public NormalTopoMapGenerator(  FLTTopoData data,
-                                        int contourHeights,
-                                        String outputFilename,
-                                        int[] rectIndices,
-                                        int imageWidth, int imageHeight
-                                        ) : base( data, contourHeights, outputFilename, rectIndices, imageWidth, imageHeight )
+        public NormalTopoMapGenerator( GeneratorSetupData setupData ) 
+            : base( setupData )
         {}
 
         // -----------------------------------------------------------------------------------------------
@@ -557,13 +573,7 @@ namespace FLTTopoContour
     {
         public override String GetName() { return "alternating color"; }
 
-        public AlternatingColorContourMapGenerator( FLTTopoData data,
-                                                    int contourHeights,
-                                                    String outputFilename,
-                                                    int[] rectIndices,
-                                                    int imageWidth,
-                                                    int imageHeight
-                                                    ) : base( data, contourHeights, outputFilename, rectIndices, imageWidth, imageHeight )
+        public AlternatingColorContourMapGenerator( GeneratorSetupData setupData ) : base( setupData )
         {}
 
         // -----------------------------------------------------------------------------------------------
@@ -628,12 +638,7 @@ namespace FLTTopoContour
     {
         public override String GetName() { return "gradient"; }
 
-        public GradientTopoMapGenerator(    FLTTopoData data,
-                                            int contourHeights,
-                                            String outputFilename,
-                                            int[] rectIndices,
-                                            int imageWidth, int imageHeight
-                                            ) : base( data, contourHeights, outputFilename, rectIndices, imageWidth, imageHeight )
+        public GradientTopoMapGenerator( GeneratorSetupData setupData ) : base( setupData )
         {}
 
         // --- color precalcs ----
@@ -713,13 +718,8 @@ namespace FLTTopoContour
     {
         public override String GetName() { return "HSlice"; }
 
-        public HorizontalSlicesTopoMapGenerator(    FLTTopoData data,
-                                                    int contourHeights,
-                                                    String outputFilename,
-                                                    int[] rectIndices,
-                                                    int imageWidth, int imageHeight
-                                                    )
-            : base(data, contourHeights, outputFilename, rectIndices, imageWidth, imageHeight )
+        public HorizontalSlicesTopoMapGenerator( GeneratorSetupData setupData )
+            : base( setupData )
         {}
 
         // which horizontal slice is being output on current iteration (needed in pixel delegate)
@@ -1001,23 +1001,21 @@ namespace FLTTopoContour
         // how many meters of buffer to put above and below the ground lines in the vertical slices
         const float BufferMeters = 100.0f;
 
-        // has to be calculated from flt data
+        // has to be calculated from flt data!
         double _metersPerCell = 0.0; //MetersPerDegree * _data.Descriptor.CellSize; // meters between data points (should be about 10)
 
         private SliceDirectionType  _sliceDirection = SliceDirectionType.NS;    
 
+        private Boolean _appendCoordinatesToFilenames = false;
+
         // topo space distance between X coordinates in the picture 
         Tuple<double,double>    _coordinateStepPerImagePixel = null;
 
-        public VerticalSlicesTopoMapGenerator(    FLTTopoData data,
-                                                    int contourHeights,
-                                                    String outputFilename,
-                                                    int[] rectIndices,
-                                                    int imageWidth, int imageHeight,
-                                                    SliceDirectionType sliceDir )
-            : base(data, contourHeights, outputFilename, rectIndices, imageWidth, imageHeight )
+        public VerticalSlicesTopoMapGenerator( SliceDirectionType sliceDir, GeneratorSetupData setupData )
+            : base( setupData )
         {
             _sliceDirection = sliceDir;
+            _appendCoordinatesToFilenames = setupData.AppendCoordinatesToFilenames;
         }
 
         // -----------------------------------------------------------------------------------------------
@@ -1155,8 +1153,7 @@ namespace FLTTopoContour
                 slice.End = new Tuple<double,double>( currentStartLatitude + sliceDelta.Latitude(), currentStartLongitude + sliceDelta.Longitude());
 
                 // -- generate filename --
-                // TODO : make coordinate appending optional
-                slice.filename = generateSliceFilename( slice, currentSliceIndex, true );
+                slice.filename = generateSliceFilename( slice, currentSliceIndex, _appendCoordinatesToFilenames );
 
                 slices.Add( slice );
 

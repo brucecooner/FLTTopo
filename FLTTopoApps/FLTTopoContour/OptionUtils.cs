@@ -98,7 +98,11 @@ namespace OptionUtils
                     {
                         matched = false;
 
-                        if (currentArgString.StartsWith(currentOptionSpec.Specifier))
+                        // have to check lengths, or for an equal sign because sometimes one option specifier is a substring of another,
+                        // and will throw a false positive if tested against the longer option
+                        if (        (currentArgString.StartsWith(currentOptionSpec.Specifier))
+                                &&  (       (currentArgString.Length == currentOptionSpec.Specifier.Length )
+                                        ||  (currentArgString.Substring(currentOptionSpec.Specifier.Length).StartsWith("=") ) ) )
                         {
                             matched = true;
 

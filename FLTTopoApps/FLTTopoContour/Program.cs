@@ -44,7 +44,10 @@ namespace FLTTopoContour
 {
     class Program
     {
-        const float versionNumber = 1.5f;
+        const int MajorVersion = 1;
+        const int MinorVersion = 5;
+        const int Revision = 1;
+        static String versionNumber = MajorVersion + "." + MinorVersion + "." + Revision;
 
         // different options the user specifies
         enum OptionType
@@ -65,7 +68,8 @@ namespace FLTTopoContour
             RectCoords,         // specifies rectangle within topo data to process/output by (floating point) latitude and longitude coordinates 
             ImageHeight,        // desired height of output image
             ImageWidth,         // desired width of output image (only width OR height may be specified)
-            AppendCoords        // append coordinates to vertical slice files (maybe others?)
+            AppendCoords,       // append coordinates to vertical slice files (maybe others?)
+            ImageHeightScale    // vertical scale factor for vertical slice image files
         };
 
         // TODO : settle on a capitalization scheme here!!!
@@ -100,6 +104,8 @@ namespace FLTTopoContour
         const TopoMapGenerator.MapType DefaultMapType = TopoMapGenerator.MapType.Normal;
 
         const bool DefaultAppendCoordinatesToFilenames = false;
+
+        const float DefaultImageHeightScale = 1.0f;
 
         //const String DefaultBackgroundColorString = "FFFFFF";
         const Int32 DefaultBackgroundColor = (Int32)(((byte)0xFF << 24) | (0xFF << 16) | (0xFF << 8) | 0xFF); // white
@@ -146,6 +152,8 @@ namespace FLTTopoContour
         static Dictionary<String, Int32> colorsDict = null;
 
         static Boolean _appendCoordinatesToFilenames = DefaultAppendCoordinatesToFilenames;
+
+        static float imageHeightScale = DefaultImageHeightScale;
 
         static Boolean rectCoordinatesSpecified = false;
         static float rectNorthLatitude;
@@ -486,6 +494,35 @@ namespace FLTTopoContour
             return parsed;
         }
 
+        // ------------------------------------------------------------------------
+        static private bool parseImageHeightScale( String input, ref String parseErrorString )
+        {
+            bool parsed =true;
+
+            float scale;
+
+            parsed = float.TryParse( input,  out scale );
+
+            if ( parsed )
+            {
+                if ( scale < 0 )
+                {
+                    parseErrorString = "Image height scale must be greater than zero.";
+                    parsed = false;
+                }
+                else
+                {
+                    imageHeightScale = scale;
+                }
+            }
+            else
+            {
+                parseErrorString = "Unable to get image height from '" + input + "'";
+            }
+
+            return parsed;
+        }
+
         // --------------------------------------------------------------------
         static private bool parseAppendCoordinates( String input, ref String parseErrorString )
         {
@@ -627,6 +664,12 @@ namespace FLTTopoContour
                 HelpText = "append coordinates to vertical slice output filenames",
                 ParseDelegate = parseAppendCoordinates,
                 ExpectsValue = false });
+            optionTypeToSpecDict.Add(OptionType.ImageHeightScale, new OptionSpecifier{
+                Specifier = "imgheightscale",
+                Description = "Image Height Scale",
+                HelpText = "<scale> scales height of vertical slice images",
+                ParseDelegate = parseImageHeightScale,
+                ExpectsValue = true });
         }
 
         // --------------------------------------------------------------------
@@ -777,6 +820,7 @@ namespace FLTTopoContour
         {
             Console.WriteLine( "Image width: " + (TopoMapGenerator.ImageDimensionSpecified( imageWidth ) ? imageWidth.ToString() : "not specified" ) );
             Console.WriteLine( "Image height: " + (TopoMapGenerator.ImageDimensionSpecified( imageHeight ) ? imageHeight.ToString() : "not specified" ) );
+            Console.WriteLine( "Image height scale: " + imageHeightScale );
         }
 
         // -------------------------------------------------------------------------------------
@@ -1187,6 +1231,7 @@ namespace FLTTopoContour
                     setupData.ImageWidth = imageWidth;
                     setupData.ImageHeight = imageHeight;
                     setupData.AppendCoordinatesToFilenames = _appendCoordinatesToFilenames;
+                    setupData.ImageHeightScale = imageHeightScale;
 
                     TopoMapGenerator generator = TopoMapGenerator.getGenerator( setupData );
                     generator.DetermineImageDimensions();

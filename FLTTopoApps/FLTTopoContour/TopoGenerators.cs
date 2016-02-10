@@ -93,6 +93,8 @@ namespace FLTTopoContour
             { get; set; }
             public Boolean AppendCoordinatesToFilenames
             { get; set; }
+            public float ImageHeightScale
+            { get; set; }
         };
 
         // ---- factory function ----
@@ -103,22 +105,22 @@ namespace FLTTopoContour
             switch ( setupData.Type )
             {
                 case MapType.Normal :
-                    generator = new NormalTopoMapGenerator( setupData );//data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight );
+                    generator = new NormalTopoMapGenerator( setupData );
                     break;
                 case MapType.Gradient :
-                    generator = new GradientTopoMapGenerator( setupData );//data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight );
+                    generator = new GradientTopoMapGenerator( setupData );
                     break;
                 case MapType.AlternatingColors :
-                    generator = new AlternatingColorContourMapGenerator( setupData );//data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight );
+                    generator = new AlternatingColorContourMapGenerator( setupData );
                     break;
                 case MapType.HorizontalSlice :
-                    generator = new HorizontalSlicesTopoMapGenerator( setupData );//data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight );
+                    generator = new HorizontalSlicesTopoMapGenerator( setupData );
                     break;
                 case MapType.VerticalSliceNS :
-                    generator = new VerticalSlicesTopoMapGenerator( VerticalSlicesTopoMapGenerator.SliceDirectionType.NS, setupData );//data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight, VerticalSlicesTopoMapGenerator.SliceDirectionType.NS );
+                    generator = new VerticalSlicesTopoMapGenerator( VerticalSlicesTopoMapGenerator.SliceDirectionType.NS, setupData );
                     break;
                 case MapType.VerticalSliceEW :
-                    generator = new VerticalSlicesTopoMapGenerator( VerticalSlicesTopoMapGenerator.SliceDirectionType.EW, setupData );//data, contourHeights, outputFilename, rectExtents, imageWidth, imageHeight, VerticalSlicesTopoMapGenerator.SliceDirectionType.EW );
+                    generator = new VerticalSlicesTopoMapGenerator( VerticalSlicesTopoMapGenerator.SliceDirectionType.EW, setupData );
                     break;
                 default:
                     throw new System.InvalidOperationException("unknown OutputModeType : " + setupData.Type.ToString());
@@ -1004,18 +1006,22 @@ namespace FLTTopoContour
         // has to be calculated from flt data!
         double _metersPerCell = 0.0; //MetersPerDegree * _data.Descriptor.CellSize; // meters between data points (should be about 10)
 
+        // topo space distance between X coordinates in the picture 
+        Tuple<double,double>    _coordinateStepPerImagePixel = null;
+
+        // ---- settings -----
         private SliceDirectionType  _sliceDirection = SliceDirectionType.NS;    
 
         private Boolean _appendCoordinatesToFilenames = false;
 
-        // topo space distance between X coordinates in the picture 
-        Tuple<double,double>    _coordinateStepPerImagePixel = null;
+        private float _imageHeightScale = 1.0f;
 
         public VerticalSlicesTopoMapGenerator( SliceDirectionType sliceDir, GeneratorSetupData setupData )
             : base( setupData )
         {
             _sliceDirection = sliceDir;
             _appendCoordinatesToFilenames = setupData.AppendCoordinatesToFilenames;
+            _imageHeightScale = setupData.ImageHeightScale;
         }
 
         // -----------------------------------------------------------------------------------------------
@@ -1065,6 +1071,9 @@ namespace FLTTopoContour
 
                 _imageHeight = Convert.ToInt32( elevationRange * pixelsPerMeter );
             }
+
+            // whatever height was, scale it
+            _imageHeight = (int)(_imageHeight * _imageHeightScale);
         }
 
         // -----------------------------------------------------------------------------------------------

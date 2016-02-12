@@ -36,8 +36,6 @@ using OptionUtils;
     -is my capitalization all over the place?
     - add 'mark coordinates' option ?
     - only use coordinates (internally)
-    - optionally mark vertical slices files with coordinates
-    - vertical scale option for v slices
  * */
 
 namespace FLTTopoContour
@@ -46,7 +44,7 @@ namespace FLTTopoContour
     {
         const int MajorVersion = 1;
         const int MinorVersion = 5;
-        const int Revision = 1;
+        const int Revision = 2;
         static String versionNumber = MajorVersion + "." + MinorVersion + "." + Revision;
 
         // different options the user specifies
@@ -841,7 +839,7 @@ namespace FLTTopoContour
                 Console.WriteLine(optionTypeToSpecDict[OptionType.Mode].Description + " : " + mapTypeToSpecifierDict[outputMapType].Description);
                 Console.WriteLine(optionTypeToSpecDict[OptionType.ContourHeights].Description + " : " + contourHeights);
                 Console.WriteLine(optionTypeToSpecDict[OptionType.ReportTimings].Description + " : " + (reportTimings ? "yes" : "no"));
-                Console.WriteLine(optionTypeToSpecDict[OptionType.AppendCoords].Description + " : " + (_appendCoordinatesToFilenames ? "yes" : "not"));
+                Console.WriteLine(optionTypeToSpecDict[OptionType.AppendCoords].Description + " : " + (_appendCoordinatesToFilenames ? "yes" : "no"));
                 // only report colors if changed from default
                 if ( colorsDict[ TopoMapGenerator.colorType.bgcolor.ToString() ] != DefaultBackgroundColor )
                 {

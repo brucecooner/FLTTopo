@@ -1,8 +1,8 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
-    <StartArguments>PHXWest recttlbr=6000,6000,10000,10000 contours=1000 maptype=verticalsliceew imgheight=150 outfile=vslice_ew_heightCalcTest/vsliceTest</StartArguments>
-    <StartWorkingDirectory>C:\Users\Spazter\Documents\GitHub\Data\PHXWest\</StartWorkingDirectory>
+    <StartArguments>GrandCanyon recttlbr=6000,6000,10000,10000  maptype=verticalslicens imgwidth=1500 outfile=vslice/fillTest</StartArguments>
+    <StartWorkingDirectory>C:\Users\Spazter\Documents\GitHub\Data\GrandCanyon\</StartWorkingDirectory>
   </PropertyGroup>
   <PropertyGroup>
     <PublishUrlHistory>publish\</PublishUrlHistory>

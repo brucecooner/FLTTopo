@@ -1261,6 +1261,23 @@ namespace FLTTopoContour
         }
 
         // -----------------------------------------------------------------------------------------------
+        // draws vertical line in pixel buffer from x,y1 to x,y2
+        private void verticalLine( int x, int y1, int y2, Int32 color )
+        {
+            // set up to always travel down in y
+            int startY = Math.Min( y1, y2 );
+            int endY = Math.Max( y1, y2 );
+
+            int offset = startY * outputImageWidth() + x;
+
+            for ( int currentY = startY; currentY <= endY; ++currentY )
+            {
+                _pixels[ offset ] = color;
+                offset += outputImageWidth();   // advance to next lower y
+            }
+        }
+
+        // -----------------------------------------------------------------------------------------------
         private void generateSlice( SliceDescriptor sliceDesc )
         {
             Console.WriteLine( "generating file = " + sliceDesc.filename );  
@@ -1277,10 +1294,13 @@ namespace FLTTopoContour
             var startRowCol = CoordinateToRowCol( sliceDesc.Start );
             var endRowCol = CoordinateToRowCol( sliceDesc.End );
 
+            // These are invariant over the slices, why aren't I doing them outside of this?
             // note this is elevation range in image, which includes buffers at top/bottom
-            float elevationRange = (_maxElevationInRect - _minElevationInRect) + (BufferMeters * 2);
+            float elevationRange = (_maxElevationInRect - _minElevationInRect) + (BufferMeters * 2.0f);
             // scale elevation range to image width
             float pixelsPerMeter = _imageHeight / elevationRange; 
+
+            var yCoordinates = new int[ _imageWidth ];
 
             // -- loop over image x axis --
             for ( int currentImageX = 0; currentImageX < _imageWidth; ++currentImageX )
@@ -1291,14 +1311,41 @@ namespace FLTTopoContour
 
                 // the 'y' in the bitmap of the groundline is analogous to the height data at the current point in the topo data (converted to
                 // pixels)
-                //int groundPixelHeight = Convert.ToInt32((BufferMeters + (currentHeight - _minElevationInRect)) / _metersPerCell);
-                int groundPixelHeight = Convert.ToInt32((currentHeight - BufferMeters)* pixelsPerMeter);
+                int groundPixelHeight = Convert.ToInt32((currentHeight - _minElevationInRect + BufferMeters) * pixelsPerMeter);
+
+                /*
+                 * if this happens, it means my maths are broken again
+                if ( _imageHeight - groundPixelHeight < 0 )
+                {
+                    int breakpoint = 10;
+                    breakpoint++;
+                }
+                 * */
 
                 // note : subtract from image height because bitmap y coordinates are 0 at the top ,increasing downward
                 int currentImageY = Math.Max( _imageHeight - groundPixelHeight, 0 );
 
+                yCoordinates[ currentImageX ] = currentImageY;
+
                 _pixels[ (currentImageY * _imageWidth) + currentImageX ] = _contourLineColor;
-                
+
+                // check for vertical gaps between consecutive pixels (>1 pixel apart)
+                // It might be better to break up the slice into a series of lines, and handle these gaps that way (by iterating
+                // over a series of points, drawing actual lines between them), but for now we'll take advantage of the fact
+                // that we're always only moving one pixel horizontally in screen space, and that these gaps don't appear very
+                // often in most datasets (unless you're in an area with a lot of cliffs and bluffs e.g. the Grand Canyon)
+                if ( currentImageX > 0 )
+                {
+                    if ( Math.Abs( currentImageY - yCoordinates[ currentImageX - 1 ] ) > 1 )    // found a gap
+                    {
+                        int midY = (yCoordinates[ currentImageX ] + yCoordinates[ currentImageX - 1 ]) / 2;
+
+                        // fill FROM previous y TO current, but half on each coordinate
+                        verticalLine( currentImageX - 1, yCoordinates[ currentImageX - 1 ], midY, _contourLineColor );
+                        verticalLine( currentImageX, midY, yCoordinates[ currentImageX ], _contourLineColor );
+                    }
+                }
+
                 currentLatitude += _coordinateStepPerImagePixel.Latitude();
                 currentLongitude += _coordinateStepPerImagePixel.Longitude();
             }

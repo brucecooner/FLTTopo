@@ -3,3 +3,8 @@ C:\Users\Spazter\Documents\GitHub\FLTTopo\FLTDataLib\bin\Release\FLTDataLib.pdb
 C:\Users\Spazter\Documents\GitHub\FLTTopo\FLTDataLib\obj\Release\FLTDataLib.dll
 C:\Users\Spazter\Documents\GitHub\FLTTopo\FLTDataLib\obj\Release\FLTDataLib.pdb
 C:\Users\Spazter\Documents\GitHub\FLTTopo\FLTDataLib\obj\Release\FLTDataLib.csprojResolveAssemblyReference.cache
+D:\Bruce\Repositories\FLTTopo\FLTDataLib\bin\Release\FLTDataLib.dll
+D:\Bruce\Repositories\FLTTopo\FLTDataLib\bin\Release\FLTDataLib.pdb
+D:\Bruce\Repositories\FLTTopo\FLTDataLib\obj\Release\FLTDataLib.csprojResolveAssemblyReference.cache
+D:\Bruce\Repositories\FLTTopo\FLTDataLib\obj\Release\FLTDataLib.dll
+D:\Bruce\Repositories\FLTTopo\FLTDataLib\obj\Release\FLTDataLib.pdb

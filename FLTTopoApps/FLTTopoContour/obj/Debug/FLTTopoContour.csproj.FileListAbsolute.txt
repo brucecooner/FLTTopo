@@ -14,3 +14,6 @@ C:\Users\Spazter\Documents\GitHub\FLTTopo\FLTTopoApps\FLTTopoContour\bin\Debug\F
 C:\Users\Spazter\Documents\GitHub\FLTTopo\FLTTopoApps\FLTTopoContour\bin\Debug\FLTDataLib.dll
 C:\Users\Spazter\Documents\GitHub\FLTTopo\FLTTopoApps\FLTTopoContour\bin\Debug\FLTDataLib.pdb
 C:\Users\Spazter\Documents\GitHub\FLTTopo\FLTTopoApps\FLTTopoContour\obj\Debug\FLTTopoContour.csprojResolveAssemblyReference.cache
+D:\Bruce\Repositories\FLTTopo\FLTTopoApps\FLTTopoContour\bin\Debug\FLTTopoContour.exe.config
+D:\Bruce\Repositories\FLTTopo\FLTTopoApps\FLTTopoContour\obj\Debug\FLTTopoContour.exe
+D:\Bruce\Repositories\FLTTopo\FLTTopoApps\FLTTopoContour\obj\Debug\FLTTopoContour.pdb

@@ -1,0 +1,9 @@
+Presented in this gallery are a few example contour maps generated with the flttopocontour application. 
+I've overlaid the command used to generate the example maps on the images (this text does not appear in generated maps).
+
+They were made with height data from an area southwest of Phoenix, Arizona, centered approximately on the Sierra Estrella Mountains.
+
+The SESource file is a screenshot taken at https://viewer.nationalmap.gov/basic/, with a bounding box over the area specified
+in the commands via the 'rectnwse' option, from which the maps were generated.
+
+Not all map modes have an example.

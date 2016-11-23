@@ -46,7 +46,7 @@
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
-    <PostBuildEvent>copy FLTDataLib.dll C:\FLTTopoApps\</PostBuildEvent>
+    <PostBuildEvent>copy FLTDataLib.dll D:\Bruce\FLTTopo</PostBuildEvent>
   </PropertyGroup>
   <PropertyGroup>
     <PreBuildEvent>

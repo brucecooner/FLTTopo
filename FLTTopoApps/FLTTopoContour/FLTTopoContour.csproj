@@ -91,7 +91,7 @@
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
-    <PostBuildEvent>copy FLTTopoContour.exe C:\FLTTopoApps\
+    <PostBuildEvent>copy FLTTopoContour.exe D:\Bruce\FLTTopo
 </PostBuildEvent>
   </PropertyGroup>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

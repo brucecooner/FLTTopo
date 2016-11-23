@@ -3,7 +3,9 @@ FLTTopo is a utility (and supporting libraries) written in C# to convert USGS fl
 
 Feed FLTTopoContour a pair of hdr (header) and flt (data) files from the USGS National Map Viewer download service (http://viewer.nationalmap.gov/viewer/) and it can output a rough, but properly contoured topographical map with contours on integral heights that you can specify (the default is 200).  
 
-It was developed in Windows and currently only outputs .bmp images.
+It was developed in Windows and currently only outputs .bmp images. 
+
+Check out the Gallery folder for some example maps generated with this application.
 
 It's not just limited to traditional contour maps though, a few other modes are available:
 * gradient: points go from one color at the lowest point to a different color at the highest point

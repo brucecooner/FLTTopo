@@ -42,6 +42,8 @@ namespace FLTDataLib
             int minRow = int.MaxValue;
             int maxRow = int.MinValue;
 
+            int totalDataPoints = 0; // total data points in region
+
             public void AddSpan( Span spanToAdd )
             {
                 spanList.Add( spanToAdd );
@@ -51,6 +53,8 @@ namespace FLTDataLib
 
                 minRow = Math.Min(minRow, spanToAdd.row);
                 maxRow = Math.Max(maxRow, spanToAdd.row);
+
+                totalDataPoints += spanToAdd.end - spanToAdd.start + 1;
 
                 if ( null == minRowMinColSpan )
                 {
@@ -71,11 +75,6 @@ namespace FLTDataLib
                                 minRowMinColSpan = spanToAdd;
                             }
                         }
-                    }
-
-                    if (minRow < minRowMinColSpan.row )
-                    {
-                        int breakpoint = 1;
                     }
                 }
             }

@@ -39,6 +39,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="FLTDataRegionalizer.cs" />
     <Compile Include="Constants.cs" />
     <Compile Include="FLTTopoData.cs" />
     <Compile Include="FTLDescriptor.cs" />

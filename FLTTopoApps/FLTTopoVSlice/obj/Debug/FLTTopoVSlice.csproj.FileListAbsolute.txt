@@ -6,3 +6,11 @@ C:\Users\Spazter\Documents\GitHub\FLTTopo\FLTTopoApps\FLTTopoVSlice\bin\Debug\FL
 C:\Users\Spazter\Documents\GitHub\FLTTopo\FLTTopoApps\FLTTopoVSlice\obj\Debug\FLTTopoVSlice.exe
 C:\Users\Spazter\Documents\GitHub\FLTTopo\FLTTopoApps\FLTTopoVSlice\obj\Debug\FLTTopoVSlice.pdb
 C:\Users\Spazter\Documents\GitHub\FLTTopo\FLTTopoApps\FLTTopoVSlice\obj\Debug\FLTTopoVSlice.csprojResolveAssemblyReference.cache
+D:\Bruce\Repositories\FLTTopo\FLTTopoApps\FLTTopoVSlice\bin\Debug\FLTTopoVSlice.exe.config
+D:\Bruce\Repositories\FLTTopo\FLTTopoApps\FLTTopoVSlice\bin\Debug\FLTTopoVSlice.exe
+D:\Bruce\Repositories\FLTTopo\FLTTopoApps\FLTTopoVSlice\bin\Debug\FLTTopoVSlice.pdb
+D:\Bruce\Repositories\FLTTopo\FLTTopoApps\FLTTopoVSlice\bin\Debug\FLTDataLib.dll
+D:\Bruce\Repositories\FLTTopo\FLTTopoApps\FLTTopoVSlice\bin\Debug\FLTDataLib.pdb
+D:\Bruce\Repositories\FLTTopo\FLTTopoApps\FLTTopoVSlice\obj\Debug\FLTTopoVSlice.csprojResolveAssemblyReference.cache
+D:\Bruce\Repositories\FLTTopo\FLTTopoApps\FLTTopoVSlice\obj\Debug\FLTTopoVSlice.exe
+D:\Bruce\Repositories\FLTTopo\FLTTopoApps\FLTTopoVSlice\obj\Debug\FLTTopoVSlice.pdb

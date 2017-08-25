@@ -52,6 +52,8 @@ namespace FLTDataLib
             verbose = true;
 
             Descriptor = null;
+
+            isQuantized = false;
         }
 
         // ----------------------------------------------
@@ -60,6 +62,8 @@ namespace FLTDataLib
 
         // ---- info from data file ----
         byte[] topoDataByteArray = null;
+
+        public bool isQuantized { get; private set; }
 
         public int NumRows
         {
@@ -356,6 +360,7 @@ namespace FLTDataLib
                     Array.Copy(floatBytes, 0, topoDataByteArray, dataIndex, sizeof(float));
                 } );  // end Parallel.For currentValueIndex
 #endif
+            isQuantized = true;
         }
 
         // ----------------------------------------------

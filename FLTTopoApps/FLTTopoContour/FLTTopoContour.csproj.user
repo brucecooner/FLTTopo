@@ -1,8 +1,8 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
-    <StartArguments>GrandCanyon recttlbr=6000,6000,10000,10000  maptype=verticalslicens imgwidth=1500 outfile=vslice/fillTest</StartArguments>
-    <StartWorkingDirectory>C:\Users\Spazter\Documents\GitHub\Data\GrandCanyon\</StartWorkingDirectory>
+    <StartArguments>floatn34w113_13 datareport timings</StartArguments>
+    <StartWorkingDirectory>D:\Bruce\FLTTopo\n34w113\</StartWorkingDirectory>
   </PropertyGroup>
   <PropertyGroup>
     <PublishUrlHistory>publish\</PublishUrlHistory>
@@ -15,7 +15,8 @@
     <VerifyUploadedFiles>false</VerifyUploadedFiles>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
-    <StartArguments>phxwest recttlbr=6000,6000,10000,8000 imgheight=500</StartArguments>
-    <StartWorkingDirectory>C:\Users\Spazter\Documents\GitHub\Data\PHXWest\</StartWorkingDirectory>
+    <StartArguments>floatn34w113_13 datareport
+</StartArguments>
+    <StartWorkingDirectory>D:\Bruce\FLTTopo\</StartWorkingDirectory>
   </PropertyGroup>
 </Project>

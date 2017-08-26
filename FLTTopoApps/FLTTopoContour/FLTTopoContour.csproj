@@ -57,6 +57,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Constants.cs" />
+    <Compile Include="FLTDataRegionalizer.cs" />
     <Compile Include="VectorUtil.cs" />
     <Compile Include="OptionUtils.cs" />
     <Compile Include="TopoGenerators.cs" />

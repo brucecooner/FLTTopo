@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace FLTDataLib
+namespace FLTTopoContour
 {
     // class concerned with finding regions of contiguous values in a quantized set of flt data
     public class FLTDataRegionalizer
@@ -42,7 +42,7 @@ namespace FLTDataLib
             int minRow = int.MaxValue;
             int maxRow = int.MinValue;
 
-            int totalDataPoints = 0; // total data points in region
+            public int totalDataPoints = 0; // total data points in region
 
             public void AddSpan( Span spanToAdd )
             {
@@ -92,11 +92,11 @@ namespace FLTDataLib
         public List<Region> RegionList() { return _regionList; }
 
         // the topo data being regionalized, is assumed to be quantized
-        private FLTTopoData _topoData;
+        private FLTDataLib.FLTTopoData _topoData;
 
         // ---------------------------------------
         // constructor
-        public FLTDataRegionalizer(FLTTopoData inputTopoData)
+        public FLTDataRegionalizer(FLTDataLib.FLTTopoData inputTopoData)
         {
             if ( false == inputTopoData.IsInitialized() )
             {

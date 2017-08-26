@@ -549,6 +549,71 @@ namespace FLTTopoContour
         }
 
         // -----------------------------------------------------------------------------------------------
+        // flattens specified region
+        private void smooshRegion(FLTDataRegionalizer.Region region)
+        {
+            Console.WriteLine("smooshing region of " + region.totalDataPoints + " points");
+
+            // but up, or down? That is the question
+            // also, what about regions 'stacked' on top of other regions that will themselves be
+            // smooshed? You can't smoosh the outer region first then the inner, because the inner
+            // actually needs to go to its own outer region's final value.
+
+            // eh, just grab a value from any adjacent region
+            float newRegionValue = region.regionValue;
+
+            foreach ( var currentSpan in region.spanList )
+            {
+                if ( currentSpan.start > 0 )
+                {
+                    newRegionValue = _data.ValueAt(currentSpan.row, currentSpan.start - 1);
+                    break;
+                }
+                else if ( currentSpan.end < _data.NumCols - 1 )
+                {
+                    newRegionValue = _data.ValueAt(currentSpan.row, currentSpan.end + 1);
+                    break;
+                }
+            }
+
+            if (newRegionValue != region.regionValue)
+            {
+                Console.WriteLine("new region value: " + newRegionValue);
+
+                foreach ( var currentSpan in region.spanList )
+                {
+                    for ( int x = currentSpan.start; x <= currentSpan.end; x += 1)
+                    {
+                        _data.SetValue(currentSpan.row, x, newRegionValue);
+                    }
+                }
+            }
+            else
+            {
+                // couldn't get different value... hmmm
+                Console.WriteLine("could not get new value?");
+            }
+        }
+
+        // -----------------------------------------------------------------------------------------------
+        public void SmooshSmallRegions(FLTDataRegionalizer regions)
+        {
+            double metersPerCell = _data.Descriptor.CellSize * Constants.Distance.MetersPerDegree;
+            double squareMetersPerCell = metersPerCell * metersPerCell;
+
+            double someThreshold = squareMetersPerCell * 30; // square meters, or a square with sides = 10meters (~30 feet)
+
+            foreach ( var currentRegion in regions.RegionList())
+            {
+                if (currentRegion.totalDataPoints * squareMetersPerCell < someThreshold)
+                {
+                    // 'remove' this region
+                    smooshRegion(currentRegion);
+                }
+            }
+        }
+
+        // -----------------------------------------------------------------------------------------------
         public override void Generate()
         {
             _generatorPixelDelegate = normalTopoMapPixelDelegate;
@@ -564,6 +629,29 @@ namespace FLTTopoContour
             addTiming("quantization", stopwatch.ElapsedMilliseconds);
             stopwatch.Reset();
             stopwatch.Start();
+
+            // TODO: add data processing options
+            // TODO: move data processing options into base class?
+            var regionalizer = new FLTTopoContour.FLTDataRegionalizer(_data);
+            regionalizer.GenerateRegions();
+
+            stopwatch.Stop();
+            addTiming("region discovery", stopwatch.ElapsedMilliseconds);
+
+            // what's smallest region look like?
+            int smallestRegionDataPoints = int.MaxValue;
+            foreach ( var currentRegion in regionalizer.RegionList())
+            {
+                smallestRegionDataPoints = Math.Min(currentRegion.totalDataPoints, smallestRegionDataPoints);
+            }
+
+            stopwatch.Reset();
+            stopwatch.Start();
+
+            SmooshSmallRegions(regionalizer);
+
+            stopwatch.Stop();
+            addTiming("smooshing small regions", stopwatch.ElapsedMilliseconds);            
 
             // can use default generator 
             DefaultGenerate();
@@ -993,13 +1081,6 @@ namespace FLTTopoContour
 
         public override String GetName() { return "VSlice-" + _sliceDirection.ToString(); }
 
-        // useful constants
-        const double MilesPerArcMinute = 1.15077945;  // ye olde nautical mile, (the equatorial distance / 360) / 60 
-        const double MilesPerDegree = MilesPerArcMinute * 60.0f;    // about 69 miles (at the equator)
-        const double MetersPerMile = 1609.34;
-        const double MetersPerDegree = MetersPerMile * MilesPerDegree;
-        const double DegreesPerMeter = 1.0 / MetersPerDegree;
-
         // how many meters of buffer to put above and below the ground lines in the vertical slices
         const float BufferMeters = 100.0f;
 
@@ -1056,7 +1137,7 @@ namespace FLTTopoContour
                 double metersPerPixel = elevationRange / _imageHeight;
 
                 double sliceWidthDegrees = Vector.Ops.Length( sampleSlice.Start, sampleSlice.End );
-                double sliceWidthMeters = sliceWidthDegrees * MetersPerDegree;
+                double sliceWidthMeters = sliceWidthDegrees * Constants.Distance.MetersPerDegree;
 
                 _imageWidth = Convert.ToInt32( sliceWidthMeters / metersPerPixel );
             }
@@ -1067,7 +1148,7 @@ namespace FLTTopoContour
                 // determine scale factor on width (i.e. what is the width of a pixel at this size)
                 double sliceWidthDegrees = Vector.Ops.Length( sampleSlice.Start, sampleSlice.End );
                 double pixelsPerDegree = _imageWidth / sliceWidthDegrees;
-                double pixelsPerMeter = pixelsPerDegree * DegreesPerMeter;
+                double pixelsPerMeter = pixelsPerDegree * Constants.Distance.DegreesPerMeter;
 
                 _imageHeight = Convert.ToInt32( elevationRange * pixelsPerMeter );
             }
@@ -1184,7 +1265,7 @@ namespace FLTTopoContour
             findMinMax();
 
             // meters between data points (about 10 for 1/3 arcsecond data)
-            _metersPerCell = MetersPerDegree * _data.Descriptor.CellSize; 
+            _metersPerCell = Constants.Distance.MetersPerDegree * _data.Descriptor.CellSize; 
 
             double westLongitude = _data.Descriptor.ColumnIndexToLongitude( rectLeft );
             double eastLongitude = _data.Descriptor.ColumnIndexToLongitude( rectRight );
@@ -1200,7 +1281,7 @@ namespace FLTTopoContour
                 // generating slices from north to south
                 var slicesDelta = new Tuple<double,double>( southLatitude - northLatitude, 0 );
 
-                slices = generateSliceDescriptors( slicesStart, slicesEnd, _contourHeights * DegreesPerMeter, slicesDelta );
+                slices = generateSliceDescriptors( slicesStart, slicesEnd, _contourHeights * Constants.Distance.DegreesPerMeter, slicesDelta );
             }
             else // east/west slices
             {
@@ -1209,7 +1290,7 @@ namespace FLTTopoContour
                 var slicesEnd = new Tuple<double,double>( southLatitude, westLongitude );
                 var slicesDelta = new Tuple<double,double>( 0, eastLongitude - westLongitude );
 
-                slices = generateSliceDescriptors( slicesStart, slicesEnd, _contourHeights * DegreesPerMeter, slicesDelta );
+                slices = generateSliceDescriptors( slicesStart, slicesEnd, _contourHeights * Constants.Distance.DegreesPerMeter, slicesDelta );
             }
 
             // -- process slices --

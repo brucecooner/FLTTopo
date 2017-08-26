@@ -86,7 +86,7 @@ namespace FLTDataLib
 
         // -----------------------------------------------------------------------
         // TODO : parameter validation
-        private void    SetValue( int Row, int Column, float Value )
+        public void    SetValue( int Row, int Column, float Value )
         {
             int startIndex = FLTDataLib.Constants.FLT_FLOAT_SIZE * ((Row * Descriptor.NumberOfColumns) + Column);
 

@@ -1076,7 +1076,7 @@ namespace FLTTopoContour
 
             Console.WriteLine( ConsoleSectionSeparator );
             Console.WriteLine( "Map data report :" );
-            Console.WriteLine( indent + "Cell size (meters): " + Constants.Distance.MetersPerDegree * data.Descriptor.CellSize);
+            Console.WriteLine(indent + "Cell size (meters): " + data.MetersPerCell());
             Console.WriteLine( indent + "Map extents:" );
             Console.WriteLine( indent + indent + WestString + " : " + data.Descriptor.WestLongitude );
             Console.WriteLine( indent + indent + NorthString + " : " + data.Descriptor.NorthLatitude );

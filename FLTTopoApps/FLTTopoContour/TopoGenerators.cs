@@ -591,6 +591,7 @@ namespace FLTTopoContour
             else
             {
                 // couldn't get different value... hmmm
+                // TODO: exception here
                 Console.WriteLine("could not get new value?");
             }
         }
@@ -598,8 +599,7 @@ namespace FLTTopoContour
         // -----------------------------------------------------------------------------------------------
         public void SmooshSmallRegions(FLTDataRegionalizer regions)
         {
-            double metersPerCell = _data.Descriptor.CellSize * Constants.Distance.MetersPerDegree;
-            double squareMetersPerCell = metersPerCell * metersPerCell;
+            double squareMetersPerCell = _data.MetersPerCell() * _data.MetersPerCell();
 
             double someThreshold = squareMetersPerCell * 30; // square meters, or a square with sides = 10meters (~30 feet)
 
@@ -1265,7 +1265,7 @@ namespace FLTTopoContour
             findMinMax();
 
             // meters between data points (about 10 for 1/3 arcsecond data)
-            _metersPerCell = Constants.Distance.MetersPerDegree * _data.Descriptor.CellSize; 
+            _metersPerCell = _data.MetersPerCell();
 
             double westLongitude = _data.Descriptor.ColumnIndexToLongitude( rectLeft );
             double eastLongitude = _data.Descriptor.ColumnIndexToLongitude( rectRight );

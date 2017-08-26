@@ -68,6 +68,7 @@ namespace FLTTopoContour
             ImageWidth,         // desired width of output image (only width OR height may be specified)
             AppendCoords,       // append coordinates to vertical slice files (maybe others?)
             ImageHeightScale    // vertical scale factor for vertical slice image files
+
         };
 
         // TODO : settle on a capitalization scheme here!!!
@@ -668,6 +669,7 @@ namespace FLTTopoContour
                 HelpText = "<scale> scales height of vertical slice images",
                 ParseDelegate = parseImageHeightScale,
                 ExpectsValue = true });
+            //optionTypeToSpecDict.Add(OptionType.asdf)
         }
 
         // --------------------------------------------------------------------
@@ -1073,7 +1075,8 @@ namespace FLTTopoContour
             }
 
             Console.WriteLine( ConsoleSectionSeparator );
-            Console.WriteLine( "Data report :" );
+            Console.WriteLine( "Map data report :" );
+            Console.WriteLine( indent + "Cell size (meters): " + Constants.Distance.MetersPerDegree * data.Descriptor.CellSize);
             Console.WriteLine( indent + "Map extents:" );
             Console.WriteLine( indent + indent + WestString + " : " + data.Descriptor.WestLongitude );
             Console.WriteLine( indent + indent + NorthString + " : " + data.Descriptor.NorthLatitude );

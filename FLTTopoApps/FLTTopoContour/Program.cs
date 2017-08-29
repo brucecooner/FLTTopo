@@ -722,11 +722,17 @@ namespace FLTTopoContour
                 programNotes.Add("  flttopocontour MyInputFile outputfile=MyOutputFile maptype=gradient gradlocolor=FF0000 gradhicolor=0000ff");
                 programNotes.Add("");
                 programNotes.Add("-Colors are specified as a 'hex triplet' of the form RRGGBB\nwhere RR = red value, GG = green value, and BB = blue value.");
-                programNotes.Add( "-Color values are given in base-16, and range from 0-255." );
-                programNotes.Add( "-Rect 'top' and 'bottom' indices are actually reversed (top < bottom), since topo data is stored from north to south." );
-                programNotes.Add( "-If a rect is specified in both indices and coordinates, the indices will be ignored." );
-                programNotes.Add( "-The equal sign between options and values may be omitted (e.g. : gradlocolorFF0000)." );
-                programNotes.Add( "-If only imgWidth or imgHeight is specified, the other is calculated\nwith respect to the aspect ratio of the input rect." );
+                programNotes.Add("-Color values are given in base-16, and range from 0-FF." );
+                programNotes.Add("-Rect 'top' and 'bottom' indices are actually reversed (top < bottom), since topo data is stored from north to south." );
+                programNotes.Add("-If a rect is specified in both indices and coordinates, the indices will be ignored." );
+                programNotes.Add("-The equal sign between options and values may be omitted (e.g. : gradlocolorFF0000)." );
+                programNotes.Add("-If only imgWidth or imgHeight is specified, the other is calculated\nwith respect to the aspect ratio of the input rect." );
+                programNotes.Add("-If the output image is not scaled, there is a 1:1 mapping between data points in the source height data and pixels in the output image");
+                programNotes.Add("-minRegionPoints excludes regions of a certain number of points in the source height data (counted post quantization)");
+                programNotes.Add("   -thus a minRegionPoints setting of 100 would prevent the showing of any contours that did not enclose at least 100");
+                programNotes.Add("    points in the source data (region can be arbitrarily shaped)");
+                programNotes.Add("   -this removes very small 'nuisance' regions from data but take care, very large settings may remove important contours");
+                programNotes.Add("   -this feature is new and has received minimal testing, results may not be exact");
             }
         }
 

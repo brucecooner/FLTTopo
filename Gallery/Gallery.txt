@@ -6,5 +6,7 @@ They were made with height data from an area southwest of Phoenix, Arizona, cent
 The SESource file is a screenshot taken at https://viewer.nationalmap.gov/basic/, with a bounding box over the area specified
 in the commands via the 'rectnwse' option, from which the maps were generated.
 
+The MinRegionPointsExample image shows a side by side comparison of part of a map, on the left generated without the minRegionPoints parameter, and on the right with minRegionPoints set to 100. 
+
 Not all map modes have an example.
 Note that images have been changed from bmp to jpg format.

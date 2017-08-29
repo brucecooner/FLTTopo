@@ -705,7 +705,7 @@ namespace FLTTopoContour
             optionTypeToSpecDict.Add(OptionType.MinRegionPoints, new OptionSpecifier{
                 Specifier = "minRegionPoints",
                 Description = "Minimum Data Points",
-                HelpText = "<num points> exclude regions of this many data points or fewer from output",
+                HelpText = "<num points> exclude regions of this many data points or fewer (in quantized source data) from output",
                 ParseDelegate = parseMinumRegionPoints,
                 ExpectsValue = true });
         }

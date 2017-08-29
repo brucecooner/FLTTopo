@@ -30,6 +30,7 @@ using OptionUtils;
 
 /*
  *  TODO :
+ *  -DETECT nonexistent folders in output files!
  *  -file overwrite avoidance or confirmation
     -config file?
     -suppress output option?
@@ -67,8 +68,8 @@ namespace FLTTopoContour
             ImageHeight,        // desired height of output image
             ImageWidth,         // desired width of output image (only width OR height may be specified)
             AppendCoords,       // append coordinates to vertical slice files (maybe others?)
-            ImageHeightScale    // vertical scale factor for vertical slice image files
-
+            ImageHeightScale,   // vertical scale factor for vertical slice image files
+            MinRegionPoints     // regions of this many data points or smaller in quantized data are ignored
         };
 
         // TODO : settle on a capitalization scheme here!!!
@@ -170,6 +171,9 @@ namespace FLTTopoContour
         // desired image size
         static Int32 imageWidth = TopoMapGenerator.ImageDimensionNotSpecifiedValue;
         static Int32 imageHeight = TopoMapGenerator.ImageDimensionNotSpecifiedValue;
+
+        // minimum region size (zero = use all regions regardless of size)
+        static int minimumRegionDataPoints = 0;
 
         // list of single line operating notes
         static List<String> programNotes = null;
@@ -529,6 +533,35 @@ namespace FLTTopoContour
             return true;
         }
 
+        // ---------------------------------------------------------------------
+        static private bool parseMinumRegionPoints( String input, ref String parseErrorString )
+        {
+            bool parsed = true;
+
+            int minPoints;
+
+            parsed = int.TryParse(input, out minPoints);
+
+            if (parsed)
+            {
+                if (minPoints <= 0)
+                {
+                    parseErrorString = "Minimum region points must be greater than zero.";
+                    parsed = false;
+                }
+                else
+                {
+                    minimumRegionDataPoints = minPoints;
+                }
+            }
+            else
+            {
+                parseErrorString = "Unable to get minimum region points from '" + input + "'";
+            }
+
+            return parsed;
+        }
+
         // -------------------------------------------------------------------- 
         static private void initOptionSpecifiers()
         {
@@ -669,7 +702,12 @@ namespace FLTTopoContour
                 HelpText = "<scale> scales height of vertical slice images",
                 ParseDelegate = parseImageHeightScale,
                 ExpectsValue = true });
-            //optionTypeToSpecDict.Add(OptionType.asdf)
+            optionTypeToSpecDict.Add(OptionType.MinRegionPoints, new OptionSpecifier{
+                Specifier = "minRegionPoints",
+                Description = "Minimum Data Points",
+                HelpText = "<num points> exclude regions of this many data points or fewer from output",
+                ParseDelegate = parseMinumRegionPoints,
+                ExpectsValue = true });
         }
 
         // --------------------------------------------------------------------
@@ -842,6 +880,11 @@ namespace FLTTopoContour
                 Console.WriteLine(optionTypeToSpecDict[OptionType.ContourHeights].Description + " : " + contourHeights);
                 Console.WriteLine(optionTypeToSpecDict[OptionType.ReportTimings].Description + " : " + (reportTimings ? "yes" : "no"));
                 Console.WriteLine(optionTypeToSpecDict[OptionType.AppendCoords].Description + " : " + (_appendCoordinatesToFilenames ? "yes" : "no"));
+                if (minimumRegionDataPoints > 0)
+                {
+                    Console.WriteLine(optionTypeToSpecDict[OptionType.MinRegionPoints].Description + " : " + minimumRegionDataPoints);
+                }
+
                 // only report colors if changed from default
                 if ( colorsDict[ TopoMapGenerator.colorType.bgcolor.ToString() ] != DefaultBackgroundColor )
                 {
@@ -1233,6 +1276,7 @@ namespace FLTTopoContour
                     setupData.ImageHeight = imageHeight;
                     setupData.AppendCoordinatesToFilenames = _appendCoordinatesToFilenames;
                     setupData.ImageHeightScale = imageHeightScale;
+                    setupData.MinimumRegionDataPoints = minimumRegionDataPoints;
 
                     TopoMapGenerator generator = TopoMapGenerator.getGenerator( setupData );
                     generator.DetermineImageDimensions();

@@ -1,8 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
+
+// TODO: 
+// -constrainged region detection
+// -region merge
 
 namespace FLTTopoContour
 {
@@ -24,29 +27,51 @@ namespace FLTTopoContour
             public List<Span> spansBelow = new List<Span>();    // spans where row > this.row
         }
 
-        // ---------------------------------------
+        // ================================================================
         // describes a 2-d area of points of the same value which all touch
         // as a series of spans
         public class Region
         {
+            // ---- region ID ----
+            static uint _nextRegionID = 1;
+            private static uint getNextRegionID()
+            {
+                uint returnID = _nextRegionID;
+                _nextRegionID += 1;
+                return returnID;
+            }
+            // ID value that indicates no region assigned
+            public const uint NO_REGION_ID = 0;
+
+            public uint Id = 0;
+
+            // ---- 
             public float regionValue = 0;
 
             public List<Span> spanList = new List<Span>();
 
             // span with the minimum column AMONG the spans with the minimum row
-            Span minRowMinColSpan = null;
+            public Span minRowMinColSpan = null;
 
-            int minCol = int.MaxValue;
-            int maxCol = int.MinValue;
+            public int minCol = int.MaxValue;
+            public int maxCol = int.MinValue;
 
-            int minRow = int.MaxValue;
-            int maxRow = int.MinValue;
+            public int minRow = int.MaxValue;
+            public int maxRow = int.MinValue;
 
-            public int totalDataPoints = 0; // total data points in region
+            // TODO: figure out casts to make unsigned type
+            public long totalDataPoints = 0; // total data points in region
 
-            public void AddSpan( Span spanToAdd )
+            // ----------------------------------
+            public Region()
             {
-                spanList.Add( spanToAdd );
+                Id = getNextRegionID();
+            }
+
+            // ----------------------------------
+            public void AddSpan(Span spanToAdd)
+            {
+                spanList.Add(spanToAdd);
 
                 minCol = Math.Min(minCol, spanToAdd.start);
                 maxCol = Math.Max(maxCol, spanToAdd.end);
@@ -56,19 +81,19 @@ namespace FLTTopoContour
 
                 totalDataPoints += spanToAdd.end - spanToAdd.start + 1;
 
-                if ( null == minRowMinColSpan )
+                if (null == minRowMinColSpan)
                 {
                     minRowMinColSpan = spanToAdd;
                 }
                 else
                 {
-                    if ( spanToAdd.row < minRowMinColSpan.row )
+                    if (spanToAdd.row < minRowMinColSpan.row)
                     {
                         minRowMinColSpan = spanToAdd;
                     }
                     else
                     {
-                        if ( spanToAdd.row == minRowMinColSpan.row)
+                        if (spanToAdd.row == minRowMinColSpan.row)
                         {
                             if (spanToAdd.start < minRowMinColSpan.start)
                             {
@@ -81,16 +106,26 @@ namespace FLTTopoContour
         }
 
         // =======================================
-        // array to track row,col locations in topo data that have already 
-        // been checked for inclusion with a region
-        private Boolean[,] _checkedLocations = null;
+        // converts row, col to region ID, NO_REGION_ID indicates no region exists there yet
+        private uint[,] _locationToRegionIDMap = null;
 
-        // all regions found in topo data
-        List<Region> _regionList;
+        // returns whether or not specified location already contained in a region (any region)
+        private Boolean isLocationInARegion(int row, int col)
+        {
+            return _locationToRegionIDMap[row, col] != Region.NO_REGION_ID;
+        }
 
-        // bit of a hot mess here, what's going on?
-        public List<Region> RegionList() { return _regionList; }
+        // ---- regions ----
+        // maps region ID to Region
+        public Dictionary<uint, Region> regionIDToRegionMap = null;
 
+        // as list of regions
+        public List<Region> RegionList()
+        {
+            return regionIDToRegionMap.Values.ToList<Region>();
+        }
+
+        // ---- data ----
         // the topo data being regionalized, is assumed to be quantized
         private FLTDataLib.FLTTopoData _topoData;
 
@@ -98,11 +133,11 @@ namespace FLTTopoContour
         // constructor
         public FLTDataRegionalizer(FLTDataLib.FLTTopoData inputTopoData)
         {
-            if ( false == inputTopoData.IsInitialized() )
+            if (false == inputTopoData.IsInitialized())
             {
                 throw new System.InvalidOperationException("topoData not initialized");
             }
-            if ( false == inputTopoData.isQuantized )
+            if (false == inputTopoData.isQuantized)
             {
                 throw new System.InvalidOperationException("topoData not quantized");
             }
@@ -112,8 +147,9 @@ namespace FLTTopoContour
 
         // -------------------------------
         // returns contiguous horizontal locations with same topo height as start location
-        // NOTE that this is the only location where values in _checkedLocations will be set!!!
-        private Span getSpan(int row, int col)
+        // receives: region that will contain span
+        // NOTE that this is the only location where values in locationToRegionIDMap will be set!!!
+        private Span getSpan(int row, int col, Region containingRegion)
         {
             var newSpan = new Span();
 
@@ -129,14 +165,14 @@ namespace FLTTopoContour
 
             while (false == done)
             {
-                // shouldn't need to check _checkedLocations here, should never meet a same valued location 
+                // shouldn't need to check if already owned here, should never meet a same valued location 
                 // belonging to a different region
-                if (        ( currentColumn >= 0 )
-                        &&  ( matchValue == _topoData.ValueAt(row, currentColumn) ) 
+                if ((currentColumn >= 0)
+                        && (matchValue == _topoData.ValueAt(row, currentColumn))
                     )
                 {
                     newSpan.start = currentColumn;
-                    _checkedLocations[row, currentColumn] = true;
+                    _locationToRegionIDMap[row, currentColumn] = containingRegion.Id;
                 }
                 else
                 {
@@ -153,12 +189,12 @@ namespace FLTTopoContour
 
             while (false == done)
             {
-                if (        ( currentColumn < _topoData.NumCols )
-                        &&  ( matchValue == _topoData.ValueAt(row, currentColumn) )
+                if ((currentColumn < _topoData.NumCols)
+                        && (matchValue == _topoData.ValueAt(row, currentColumn))
                     )
                 {
                     newSpan.end = currentColumn;
-                    _checkedLocations[row, currentColumn] = true;
+                    _locationToRegionIDMap[row, currentColumn] = containingRegion.Id;
                 }
                 else
                 {
@@ -173,9 +209,10 @@ namespace FLTTopoContour
 
         // ----------------------------------------------------------------
         // gets spans on specified row that horizontally overlap specified sourceSpan
-        // -sub spans may extend past ends of sourceSpan
+        // new spans are contained by containingRegion
+        // -these neighbor spans may extend PAST ends of sourceSpan
         // -may return an empty list
-        private List<Span> getNeighborSpans( Span sourceSpan, int row )
+        private List<Span> getNeighborSpans(Span sourceSpan, int row, Region containingRegion)
         {
             var newSpans = new List<Span>();
 
@@ -185,19 +222,19 @@ namespace FLTTopoContour
             int currentCol = sourceSpan.start;
 
             // keep finding spans until we're past the end of the source span
-            while (       (currentCol <= sourceSpan.end )
-                        &&  (currentCol < _topoData.NumCols )
+            while ((currentCol <= sourceSpan.end)
+                        && (currentCol < _topoData.NumCols)
                     )
             {
-                if (        ( false == _checkedLocations[row, currentCol ] )
-                        &&  ( matchValue == _topoData.ValueAt(row, currentCol) )
+                if ((false == isLocationInARegion(row, currentCol))
+                        && (matchValue == _topoData.ValueAt(row, currentCol))
                     )
                 {
-                    var newSpan = getSpan(row, currentCol);
+                    var newSpan = getSpan(row, currentCol, containingRegion);
 
                     newSpans.Add(newSpan);
 
-                    if ( row < sourceSpan.row )
+                    if (row < sourceSpan.row)
                     {
                         sourceSpan.spansAbove.Add(newSpan);
 
@@ -229,68 +266,214 @@ namespace FLTTopoContour
 
             newRegion.regionValue = _topoData.ValueAt(row, col);
 
-            var seedSpan = getSpan(row, col);
+            var seedSpan = getSpan(row, col, newRegion);
 
             var spansToCheck = new List<Span>();
 
-            spansToCheck.Add( seedSpan );
+            spansToCheck.Add(seedSpan);
 
-            while ( spansToCheck.Count > 0 )
+            while (spansToCheck.Count > 0)
             {
                 Span checkSpan = spansToCheck[0];
                 spansToCheck.RemoveAt(0);
 
                 // get spans above
-                if ( checkSpan.row > 0 )
+                if (checkSpan.row > 0)
                 {
-                    var aboveSpans = getNeighborSpans(checkSpan, checkSpan.row - 1);
+                    var aboveSpans = getNeighborSpans(checkSpan, checkSpan.row - 1, newRegion);
 
                     spansToCheck.AddRange(aboveSpans);
                 }
-                
+
                 // get spans below
-                if ( checkSpan.row < _topoData.NumRows - 1 )
+                if (checkSpan.row < _topoData.NumRows - 1)
                 {
-                    var belowSpans = getNeighborSpans(checkSpan, checkSpan.row + 1);
+                    var belowSpans = getNeighborSpans(checkSpan, checkSpan.row + 1, newRegion);
 
                     spansToCheck.AddRange(belowSpans);
                 }
 
                 // done checking, add span to region
-                newRegion.AddSpan( checkSpan );
+                newRegion.AddSpan(checkSpan);
             }
 
             return newRegion;
         }
 
         // -------------------------------
+        // clears data structures, prepares to find regions again in
+        // same _topoData
+        // note : does not re-allocate already allocated structures
+        public void Reset()
+        {
+            if (null == regionIDToRegionMap)
+            {
+                regionIDToRegionMap = new Dictionary<uint, Region>();
+            }
+            else
+            {
+                regionIDToRegionMap.Clear();
+            }
+
+            if (null == _locationToRegionIDMap)
+            {
+                _locationToRegionIDMap = new uint[_topoData.NumRows, _topoData.NumCols];
+            }
+
+            //for (int row = 0; row < _topoData.NumRows; row += 1)
+            Parallel.For(0, _topoData.NumRows, currentRow =>
+            {
+                for (int col = 0; col < _topoData.NumCols; col += 1)
+                {
+                    _locationToRegionIDMap[currentRow, col] = Region.NO_REGION_ID;
+                }
+            });
+        }
+
+        // -------------------------------
         public void GenerateRegions()
         {
-            _regionList = new List<Region>();
+            Reset();
 
-            _checkedLocations = new Boolean[_topoData.NumRows, _topoData.NumCols];
+            // ---- generate ----
             for (int row = 0; row < _topoData.NumRows; row += 1)
             {
                 for (int col = 0; col < _topoData.NumCols; col += 1)
                 {
-                    _checkedLocations[row, col] = false;
-                }
-            }
-
-            for ( int row = 0; row < _topoData.NumRows; row += 1 )
-            {
-                for ( int col = 0; col < _topoData.NumCols; col += 1 )
-                {
-                    if ( false == _checkedLocations[row, col] )
+                    if (false == isLocationInARegion(row, col))
                     {
                         var newRegion = getRegion(row, col);
 
-                        _regionList.Add(newRegion);
+                        regionIDToRegionMap[newRegion.Id] = newRegion;
                     }
                 }
             }
 
-            _checkedLocations = null;
+#if false
+            // ---- integrity checks? ----
+            // every point in data should be in a region
+            for (int row = 0; row < _topoData.NumRows; row += 1)
+            {
+                for (int col = 0; col < _topoData.NumCols; col += 1)
+                {
+                    if (false == isLocationInARegion(row, col))
+                    {
+                        throw new System.Exception("Regionalization did not cover point at " + row + "," + col);
+                    }
+                }
+            }
+#endif
+        }   // end GenerateRegions()
+
+        // ---------------------------------------------------------------------------
+        public Region getRegionAt(int row, int col)
+        {
+            Region returnRegion = null;
+
+            if (false == isLocationInARegion(row,col))
+            {
+                throw new System.InvalidOperationException("location at " + row + "," + col + " does not map to a region");
+            }
+
+            returnRegion = regionIDToRegionMap[_locationToRegionIDMap[row, col]];
+
+            return returnRegion;
+        }
+
+        // ---------------------------------------------------------------------------
+        // gets a region "adjacent" to the specified region that meets a minimum total data points size criteria
+        // NOTE: a region may be contained within another region that does not meet the criteria. In this case, the 
+        // containing region itself will be used as the start region for selection.
+        public Region getNeighboringRegionOfMinimumSize(Region sourceRegion, long minimumTotalDataPoints)
+        {
+            Region returnRegion = null;
+
+            // generally, quantized regions will touch two other regions (the next height above and below), but in an area
+            // with vertical bluffs this rule may not apply
+
+            var checkedRegions = new List<Region>();
+
+            // NOTE: halts at first region that meets criteria
+            // ALSO NOTE: only checks left/right of spans. May want to incorporate neighbor row checks, but most of
+            // those would just find the current region (since spans are horizontal)
+            foreach ( var currentSpan in sourceRegion.spanList)
+            {
+                if (currentSpan.start > 0)
+                {
+                    var checkRegion = getRegionAt(currentSpan.row, currentSpan.start - 1);
+                    checkedRegions.Add(checkRegion);
+
+                    if (checkRegion.totalDataPoints >= minimumTotalDataPoints)
+                    {
+                        returnRegion = checkRegion;
+                        break;
+                    }
+                }
+
+                if (currentSpan.end < _topoData.NumCols - 1)
+                {
+                    var checkRegion = getRegionAt(currentSpan.row, currentSpan.end + 1);
+                    checkedRegions.Add(checkRegion);
+
+                    if (checkRegion.totalDataPoints >= minimumTotalDataPoints)
+                    {
+                        returnRegion = checkRegion;
+                        break;
+                    }
+                }
+            }
+
+            // it's possible the source region is contained entirely within a region that does not meet the minimum size criteria
+            // in this case go through the regions we checked and find a region adjacent to one of them that meets the criteria
+            if (null == returnRegion)
+            {
+                // it is highly UNlikely that a region has no neighbors (that would mean it's the only region, i.e. the
+                // topo data was completely flat), but we'll check anyway
+                if (0 == checkedRegions.Count)
+                {
+                    throw new System.Exception("No regions were checked in initial tests.");
+                }
+
+                returnRegion = getNeighboringRegionOfMinimumSize(checkedRegions[0], minimumTotalDataPoints);
+
+                if (null == returnRegion)
+                {
+                    throw new System.Exception("Was unable to find region matching minimum total data points criteria");
+                }
+            }
+
+            return returnRegion;
+        }
+
+        // ---------------------------------------------------------------------------
+        public List<String> getStats()
+        {
+            var returnStrings = new List<String>();
+
+            returnStrings.Add("num regions: " + regionIDToRegionMap.Count);
+
+            long minimumTotalDataPoints = int.MaxValue;
+            long maximumTotalDataPoints = int.MinValue;
+            long totalRegionalDataPoints = 0;
+
+            long totalNumberOfSpans = 0;
+
+            foreach (var currentRegion in RegionList())
+            {
+                minimumTotalDataPoints = Math.Min(currentRegion.totalDataPoints, minimumTotalDataPoints);
+                maximumTotalDataPoints = Math.Max(currentRegion.totalDataPoints, maximumTotalDataPoints);
+
+                totalRegionalDataPoints += currentRegion.totalDataPoints;
+
+                totalNumberOfSpans += currentRegion.spanList.Count;
+            }
+
+            returnStrings.Add("minimum data points: " + minimumTotalDataPoints);
+            returnStrings.Add("maximum data points: " + maximumTotalDataPoints);
+            returnStrings.Add("total data points (all regions): " + totalRegionalDataPoints);
+            returnStrings.Add("total spans (all regions): " + totalNumberOfSpans);
+
+            return returnStrings;
         }
     }
 }

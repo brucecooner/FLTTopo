@@ -95,6 +95,8 @@ namespace FLTTopoContour
             { get; set; }
             public float ImageHeightScale
             { get; set; }
+            public int MinimumRegionDataPoints
+            { get; set; }
         };
 
         // ---- factory function ----
@@ -131,6 +133,9 @@ namespace FLTTopoContour
 
         // ---- output file(s) ----
         protected String _outputFilename;
+
+        // ---- minimum region size ----
+        protected int _minimumRegionDataPoints = 0;
 
         // ---- rect extents ----
         // TODO : consider changing this to use lat/long instead
@@ -263,6 +268,99 @@ namespace FLTTopoContour
             return _imageHeight;
         }
 
+        // ---------------------------------------------------------------------------------
+        protected FLTTopoContour.FLTDataRegionalizer getTopoDataRegions(FLTTopoData data)
+        {
+            var regionalizer = new FLTTopoContour.FLTDataRegionalizer(data);
+
+            regionalizer.GenerateRegions();
+
+            return regionalizer;
+        }
+
+        // ---------------------------------------------------------------------------------
+        // sets all points in specified region in data to height 
+        // should live in regionalizer?
+        protected void setRegionHeight(FLTDataRegionalizer.Region regionToSet, float newHeight, FLTTopoData data)
+        {
+            regionToSet.regionValue = newHeight;
+
+            foreach (var currentSpan in regionToSet.spanList)
+            {
+                for (int x = currentSpan.start; x <= currentSpan.end; x += 1)
+                {
+                    _data.SetValue(currentSpan.row, x, newHeight);
+                }
+            }
+        }
+
+        // ---------------------------------------------------------------------------------
+        protected void processMinimumRegions()
+        {
+            if (_minimumRegionDataPoints > 0)
+            {
+                Console.WriteLine("Processing minimum regions.");
+
+                System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
+                stopwatch.Reset();
+                stopwatch.Start();
+
+                var regionalizer = getTopoDataRegions(_data);
+
+                stopwatch.Stop();
+                addTiming("region discovery", stopwatch.ElapsedMilliseconds);
+
+                stopwatch.Reset();
+                stopwatch.Start();
+
+#if false
+                foreach (var statString in regionalizer.getStats())
+                {
+                    Console.WriteLine(statString);
+                }
+#endif
+
+                foreach (var currentRegion in regionalizer.RegionList())
+                {
+                    if (currentRegion.totalDataPoints <= _minimumRegionDataPoints)
+                    {
+                        var regionOfMinimumSize = regionalizer.getNeighboringRegionOfMinimumSize(currentRegion, _minimumRegionDataPoints);
+
+                        var newHeight = regionOfMinimumSize.regionValue;
+
+#if false
+                        Console.WriteLine("flattening region " + currentRegion.Id + " of " + currentRegion.totalDataPoints + " points");
+                        Console.WriteLine("topleft most span at : " + currentRegion.minRowMinColSpan.start + "," + currentRegion.minRowMinColSpan.row);
+                        Console.WriteLine("org region height: " + currentRegion.regionValue + " new value: " + newHeight);
+#endif
+
+                        setRegionHeight(currentRegion, newHeight, _data);
+                    }
+                }
+
+                stopwatch.Stop();
+                addTiming("removing regions", stopwatch.ElapsedMilliseconds);
+
+#if false
+                // double check our work
+                Console.WriteLine("====================================================");
+                Console.WriteLine("Double checking...");
+                regionalizer.GenerateRegions();
+                foreach (var statString in regionalizer.getStats())
+                {
+                    Console.WriteLine(statString);
+                }
+                foreach (var currentRegion in regionalizer.RegionList())
+                {
+                    if (currentRegion.totalDataPoints <= _minimumRegionDataPoints)
+                    {
+                        throw new System.Exception("min region processing failed to reduce region at ");
+                    }
+                }
+#endif
+            }
+        }
+
         // ------------------------------------------------------
         // ---- constructor ----
         // note : as the generators are pixel focused, we'll only work with indices into the topo data (for now)
@@ -293,6 +391,8 @@ namespace FLTTopoContour
 
             _imageWidth = setupData.ImageWidth;
             _imageHeight = setupData.ImageHeight;
+
+            _minimumRegionDataPoints = setupData.MinimumRegionDataPoints;
 
             addTimingHandler = null;
         }
@@ -549,71 +649,6 @@ namespace FLTTopoContour
         }
 
         // -----------------------------------------------------------------------------------------------
-        // flattens specified region
-        private void smooshRegion(FLTDataRegionalizer.Region region)
-        {
-            Console.WriteLine("smooshing region of " + region.totalDataPoints + " points");
-
-            // but up, or down? That is the question
-            // also, what about regions 'stacked' on top of other regions that will themselves be
-            // smooshed? You can't smoosh the outer region first then the inner, because the inner
-            // actually needs to go to its own outer region's final value.
-
-            // eh, just grab a value from any adjacent region
-            float newRegionValue = region.regionValue;
-
-            foreach ( var currentSpan in region.spanList )
-            {
-                if ( currentSpan.start > 0 )
-                {
-                    newRegionValue = _data.ValueAt(currentSpan.row, currentSpan.start - 1);
-                    break;
-                }
-                else if ( currentSpan.end < _data.NumCols - 1 )
-                {
-                    newRegionValue = _data.ValueAt(currentSpan.row, currentSpan.end + 1);
-                    break;
-                }
-            }
-
-            if (newRegionValue != region.regionValue)
-            {
-                Console.WriteLine("new region value: " + newRegionValue);
-
-                foreach ( var currentSpan in region.spanList )
-                {
-                    for ( int x = currentSpan.start; x <= currentSpan.end; x += 1)
-                    {
-                        _data.SetValue(currentSpan.row, x, newRegionValue);
-                    }
-                }
-            }
-            else
-            {
-                // couldn't get different value... hmmm
-                // TODO: exception here
-                Console.WriteLine("could not get new value?");
-            }
-        }
-
-        // -----------------------------------------------------------------------------------------------
-        public void SmooshSmallRegions(FLTDataRegionalizer regions)
-        {
-            double squareMetersPerCell = _data.MetersPerCell() * _data.MetersPerCell();
-
-            double someThreshold = squareMetersPerCell * 30; // square meters, or a square with sides = 10meters (~30 feet)
-
-            foreach ( var currentRegion in regions.RegionList())
-            {
-                if (currentRegion.totalDataPoints * squareMetersPerCell < someThreshold)
-                {
-                    // 'remove' this region
-                    smooshRegion(currentRegion);
-                }
-            }
-        }
-
-        // -----------------------------------------------------------------------------------------------
         public override void Generate()
         {
             _generatorPixelDelegate = normalTopoMapPixelDelegate;
@@ -630,28 +665,7 @@ namespace FLTTopoContour
             stopwatch.Reset();
             stopwatch.Start();
 
-            // TODO: add data processing options
-            // TODO: move data processing options into base class?
-            var regionalizer = new FLTTopoContour.FLTDataRegionalizer(_data);
-            regionalizer.GenerateRegions();
-
-            stopwatch.Stop();
-            addTiming("region discovery", stopwatch.ElapsedMilliseconds);
-
-            // what's smallest region look like?
-            int smallestRegionDataPoints = int.MaxValue;
-            foreach ( var currentRegion in regionalizer.RegionList())
-            {
-                smallestRegionDataPoints = Math.Min(currentRegion.totalDataPoints, smallestRegionDataPoints);
-            }
-
-            stopwatch.Reset();
-            stopwatch.Start();
-
-            SmooshSmallRegions(regionalizer);
-
-            stopwatch.Stop();
-            addTiming("smooshing small regions", stopwatch.ElapsedMilliseconds);            
+            processMinimumRegions();
 
             // can use default generator 
             DefaultGenerate();
@@ -717,6 +731,8 @@ namespace FLTTopoContour
             stopwatch.Start();
 
             _generatorPixelDelegate = alternatingContourColorMapPixelDelegate;
+
+            processMinimumRegions();
 
             // can use default generator
             DefaultGenerate();
@@ -799,6 +815,8 @@ namespace FLTTopoContour
             _greenRange = _highGreen - _lowGreen;
             _blueRange = _highBlue - _lowBlue;
 
+            processMinimumRegions();
+
             DefaultGenerate();
         }
     }   // end class GradientTopoMapGenerator
@@ -863,6 +881,8 @@ namespace FLTTopoContour
 
             // -- min/max discovery --
             findMinMax();
+
+            processMinimumRegions();
 
             // -- not using default generate func, so must manage pixels ourselves --
             _pixels = new Int32[outputImagePixelCount()];

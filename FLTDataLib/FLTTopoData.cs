@@ -86,6 +86,7 @@ namespace FLTDataLib
 
         // -----------------------------------------------------------------------
         // TODO : parameter validation
+        // TODO:OPTIMIZE add ability to bulk set a range of columns
         public void    SetValue( int Row, int Column, float Value )
         {
             int startIndex = FLTDataLib.Constants.FLT_FLOAT_SIZE * ((Row * Descriptor.NumberOfColumns) + Column);

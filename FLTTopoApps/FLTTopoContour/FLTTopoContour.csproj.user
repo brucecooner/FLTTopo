@@ -1,8 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
-    <StartArguments>floatn34w113_13 timings rectnwse=33.3902,-112.3730,33.0916,-112.1326 contours=100 outfile=sparkletest minRegionPoints=30
-</StartArguments>
+    <StartArguments>floatn34w113_13 timings contours=100 outfile=sparkletestGRAD minRegionPoints=30 maptype=gradient</StartArguments>
     <StartWorkingDirectory>D:\Bruce\FLTTopo\n34w113\</StartWorkingDirectory>
   </PropertyGroup>
   <PropertyGroup>
@@ -16,7 +15,7 @@
     <VerifyUploadedFiles>false</VerifyUploadedFiles>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
-    <StartArguments>floatn34w113_13 timings rectnwse=33.3902,-112.3730,33.0916,-112.1326 contours=100 outfile=sparkletest minRegionPoints=10
+    <StartArguments>floatn34w113_13 contours=100 outfile=sparkletest minRegionPoints=100 maptype=gradient
 </StartArguments>
     <StartWorkingDirectory>D:\Bruce\FLTTopo\</StartWorkingDirectory>
   </PropertyGroup>

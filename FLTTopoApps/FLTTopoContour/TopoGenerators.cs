@@ -267,6 +267,22 @@ namespace FLTTopoContour
             //return rectBottom - rectTop + 1;
             return _imageHeight;
         }
+        
+        // --------------------------------------------------------------------------------
+        protected void printTopoValues(int row, int col, int rows, int cols)
+        {
+            // TODO: header row with column values
+            for (var currentRow = row; currentRow <= row + rows; currentRow += 1)
+            {
+                var ColumnsString = currentRow + ": ";
+                for (var currentCol = col; currentCol <= col + cols; currentCol += 1)
+                {
+                    ColumnsString += _data.ValueAt(currentRow, currentCol) + "  ";
+                }
+
+                Console.WriteLine(ColumnsString);
+            }
+        }
 
         // ---------------------------------------------------------------------------------
         protected FLTTopoContour.FLTDataRegionalizer getTopoDataRegions(FLTTopoData data)
@@ -836,19 +852,7 @@ namespace FLTTopoContour
         // -----------------------------------------------------------------------------------------------
         private Int32 horizontalSlicesPixelDelegate( float[,] heights )
         {
-            /* // takes about 0.7 seconds for a 4k by 4k rect */
             // test that pixel is on current contour, and ANY neighbor is on a lower step
-            /*
-            return              ( rowCenter[1] == currentContourRow )
-                            &&  (       ( rowAbove[0] < rowCenter[1] )
-                                    ||  ( rowAbove[1] < rowCenter[1] )
-                                    ||  ( rowAbove[2] < rowCenter[1] )
-                                    ||  ( rowCenter[0] < rowCenter[1] )
-                                    ||  ( rowCenter[2] < rowCenter[1] )
-                                    ||  ( rowBelow[0] < rowCenter[1] )
-                                    ||  ( rowBelow[1] < rowCenter[1] )
-                                    ||  ( rowBelow[2] < rowCenter[1] ) ) ? _contourLineColor : _backgroundColor;
-             */
             float current = heightCurrent( heights );
 
             return              ( current == _currentContourHeight )

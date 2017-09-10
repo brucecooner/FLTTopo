@@ -29,7 +29,9 @@ namespace FLTTopoContour
             stopwatch.Stop();
             addTiming("quantization", stopwatch.ElapsedMilliseconds);
 
-            //processMinimumRegions();
+			var regionalizer = new FLTDataRegionalizer(_data);
+
+			regionalizer.GenerateRegions();
 
             // alllllright, I guess we need to, like, make an svg now
             var builder = new SVGBuilder.Builder();

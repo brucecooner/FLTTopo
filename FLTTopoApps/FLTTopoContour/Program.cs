@@ -82,6 +82,7 @@ namespace FLTTopoContour
         const String MoreThanOneInputFileSpecifiedErrorString = "More than one input file specified.";
         const String ImageWidthAndHeightSpecifiedErrorString = "Image width and height both specified, only one dimension may be\nspecified, and the other will be calculated.";
         const String ImageDimensionLTEZeroErrorMessage = " was less than or equal to zero.";
+		const String OutputMapTypeDoesNotSupportSVGErrorMessage = "Specified output map type does not support SVG output.";
         const String ConsoleSectionSeparator = "- - - - - - - - - - -";
         const String BannerMessage = "FLT Topo Data Contour Generator (run with '?' for options list)";  // "You wouldn't like me when I'm angry."
         const char HelpRequestChar = '?';
@@ -1204,16 +1205,6 @@ namespace FLTTopoContour
             // ----- parse program arguments -----
             Boolean parsed = parseArgs(args);
 
-			// svg adds a wrinkle in here, until it's supported for all formats, check to see if the specified map type supports it here
-			if ( _outputSVGFormat )
-			{
-				if (false == TopoMapGenerator.mapTypeSupportsSVG( outputMapType ))
-				{
-					parseErrorMessage = "Specified map type does not support SVG output.";
-					parsed = false;
-				}
-			}
-
             if ( false == parsed )
             {
                 System.Console.WriteLine();
@@ -1274,6 +1265,20 @@ namespace FLTTopoContour
                     }
                 }
                 catch { return ReturnErrorCode; }
+				// ---- validate svg is supported (if specified) ---- 
+				try
+				{
+					if ( _outputSVGFormat )
+					{
+						if (false == TopoMapGenerator.mapTypeSupportsSVG( outputMapType ))
+						{
+							Console.WriteLine( OutputMapTypeDoesNotSupportSVGErrorMessage );
+							
+							return ReturnErrorCode;
+						}
+					}
+				}
+				catch { return ReturnErrorCode; }
 
                 // report current options
                 echoSettingsValues();

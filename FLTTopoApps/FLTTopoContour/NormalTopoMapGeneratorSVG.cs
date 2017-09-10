@@ -29,7 +29,11 @@ namespace FLTTopoContour
             stopwatch.Stop();
             addTiming("quantization", stopwatch.ElapsedMilliseconds);
 
-			var regionalizer = new FLTDataRegionalizer(_data);
+			var regionalizerSetup = new FLTDataRegionalizer.RegionalizerSetupData();
+			regionalizerSetup.topoData = _data;
+			regionalizerSetup.RectIndices = this._rectIndices;
+
+			var regionalizer = new FLTDataRegionalizer(regionalizerSetup);
 
 			regionalizer.GenerateRegions();
 

@@ -154,7 +154,7 @@ namespace FLTTopoContour
         public const int RectBottomIndex = 2;
         public const int RectRightIndex = 3;
 
-        private int[] _rectIndices;
+        protected int[] _rectIndices;
 
         // helpers for indices
         protected int rectLeft { get { return _rectIndices[RectLeftIndex]; } }
@@ -294,9 +294,14 @@ namespace FLTTopoContour
         }
 
         // ---------------------------------------------------------------------------------
-        protected FLTTopoContour.FLTDataRegionalizer getTopoDataRegions(FLTTopoData data)
+        protected FLTTopoContour.FLTDataRegionalizer getTopoDataRegions(FLTTopoData data, int[] rectIndices )
         {
-            var regionalizer = new FLTTopoContour.FLTDataRegionalizer(data);
+			var regionalizerSetup = new FLTDataRegionalizer.RegionalizerSetupData();
+
+			regionalizerSetup.topoData = data;
+			regionalizerSetup.RectIndices = rectIndices;
+
+            var regionalizer = new FLTTopoContour.FLTDataRegionalizer(regionalizerSetup);
 
             regionalizer.GenerateRegions();
 
@@ -330,7 +335,15 @@ namespace FLTTopoContour
                 stopwatch.Reset();
                 stopwatch.Start();
 
-                var regionalizer = getTopoDataRegions(_data);
+				// note: regionalizing full sized rect for this operation
+				var rectIndices = new int[4];
+
+				rectIndices[FLTDataRegionalizer.RectLeftIndex] = 0;
+				rectIndices[FLTDataRegionalizer.RectTopIndex] = 0;
+				rectIndices[FLTDataRegionalizer.RectRightIndex] = _data.Descriptor.NumberOfColumns - 1;
+				rectIndices[FLTDataRegionalizer.RectBottomIndex] = _data.Descriptor.NumberOfRows - 1;
+
+                var regionalizer = getTopoDataRegions(_data, rectIndices);
 
                 stopwatch.Stop();
                 addTiming("region discovery", stopwatch.ElapsedMilliseconds);

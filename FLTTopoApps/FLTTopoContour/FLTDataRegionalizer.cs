@@ -10,6 +10,11 @@ using System.Threading.Tasks;
 namespace FLTTopoContour
 {
     // class concerned with finding regions of contiguous values in a quantized set of flt data
+
+	// NOTE: I've added 'rectIndices' which will control the area that gets regionalized. They specify a sub-rect
+	// of the flt data. Note, however, that the coordinates kept in the spans will remain in flt topo space, and NOT
+	// in rect relative space. Some translation may be necessary for some operations.
+
     public class FLTDataRegionalizer
     {
         // utility types
@@ -129,21 +134,51 @@ namespace FLTTopoContour
         // the topo data being regionalized, is assumed to be quantized
         private FLTDataLib.FLTTopoData _topoData;
 
+        // ---- rect extents ----
+		// indices into flt data controlling area that gets regionalized
+        // consts to tell how to pack extents into an array
+        public const int RectTopIndex = 0;
+        public const int RectLeftIndex = 1;
+        public const int RectBottomIndex = 2;
+        public const int RectRightIndex = 3;
+
+        private int[] _rectIndices;
+
+        // helpers for indices
+        protected int rectLeft { get { return _rectIndices[RectLeftIndex]; } }
+        protected int rectTop { get { return _rectIndices[RectTopIndex]; } }
+        protected int rectRight { get { return _rectIndices[RectRightIndex]; } }
+        protected int rectBottom { get { return _rectIndices[RectBottomIndex]; } }
+
+		protected int rectNumRows { get { return rectBottom - rectTop + 1; } }
+		protected int rectNumCols { get { return rectRight - rectLeft + 1; } }
+
+		// ---- setup data ----
+		public class RegionalizerSetupData
+		{
+			public FLTDataLib.FLTTopoData	topoData;
+            public int[]					RectIndices;
+		}
+
         // ---------------------------------------
         // constructor
-        public FLTDataRegionalizer(FLTDataLib.FLTTopoData inputTopoData)
+        public FLTDataRegionalizer(RegionalizerSetupData setupData)
         {
-            if (false == inputTopoData.IsInitialized())
+            if (false == setupData.topoData.IsInitialized())
             {
-                throw new System.InvalidOperationException("topoData not initialized");
+                throw new System.InvalidOperationException("FLTDataRegionalizer: topoData not initialized");
             }
-            if (false == inputTopoData.isQuantized)
+            if (false == setupData.topoData.isQuantized)
             {
-                throw new System.InvalidOperationException("topoData not quantized");
+                throw new System.InvalidOperationException("FLTDataRegionalizer: topoData not quantized");
             }
 
-            _topoData = inputTopoData;
-        }
+            _topoData = setupData.topoData;
+
+			_rectIndices = setupData.RectIndices;
+
+			// TODO: validate rect!
+		}
 
         // -------------------------------
         // returns contiguous horizontal locations with same topo height as start location
@@ -167,8 +202,8 @@ namespace FLTTopoContour
             {
                 // shouldn't need to check if already owned here, should never meet a same valued location 
                 // belonging to a different region
-                if ((currentColumn >= 0)
-                        && (matchValue == _topoData.ValueAt(row, currentColumn))
+                if (		(currentColumn >= rectLeft)
+                        &&	(matchValue == _topoData.ValueAt(row, currentColumn))
                     )
                 {
                     newSpan.start = currentColumn;
@@ -189,8 +224,8 @@ namespace FLTTopoContour
 
             while (false == done)
             {
-                if ((currentColumn < _topoData.NumCols)
-                        && (matchValue == _topoData.ValueAt(row, currentColumn))
+                if (		(currentColumn <= rectRight ) // _topoData.NumCols)
+                        &&	(matchValue == _topoData.ValueAt(row, currentColumn))
                     )
                 {
                     newSpan.end = currentColumn;
@@ -222,12 +257,12 @@ namespace FLTTopoContour
             int currentCol = sourceSpan.start;
 
             // keep finding spans until we're past the end of the source span
-            while ((currentCol <= sourceSpan.end)
-                        && (currentCol < _topoData.NumCols)
+            while (		(currentCol <= sourceSpan.end)
+					&&	(currentCol <= rectRight ) //_topoData.NumCols)
                     )
             {
-                if ((false == isLocationInARegion(row, currentCol))
-                        && (matchValue == _topoData.ValueAt(row, currentCol))
+                if (		(false == isLocationInARegion(row, currentCol))
+                        &&	(matchValue == _topoData.ValueAt(row, currentCol))
                     )
                 {
                     var newSpan = getSpan(row, currentCol, containingRegion);
@@ -278,7 +313,7 @@ namespace FLTTopoContour
                 spansToCheck.RemoveAt(0);
 
                 // get spans above
-                if (checkSpan.row > 0)
+                if (checkSpan.row > rectTop ) // 0)
                 {
                     var aboveSpans = getNeighborSpans(checkSpan, checkSpan.row - 1, newRegion);
 
@@ -286,7 +321,7 @@ namespace FLTTopoContour
                 }
 
                 // get spans below
-                if (checkSpan.row < _topoData.NumRows - 1)
+                if (checkSpan.row < rectBottom ) // _topoData.NumRows - 1)
                 {
                     var belowSpans = getNeighborSpans(checkSpan, checkSpan.row + 1, newRegion);
 
@@ -317,11 +352,15 @@ namespace FLTTopoContour
 
             if (null == _locationToRegionIDMap)
             {
+				// note that a full size map (size of topo data) is used here, regardless of rect size/placement
+				// this allows usage of coordinates in the original (map) space without 
+				// having to translate to/from rect space
                 _locationToRegionIDMap = new uint[_topoData.NumRows, _topoData.NumCols];
             }
 
-            //for (int row = 0; row < _topoData.NumRows; row += 1)
-            Parallel.For(0, _topoData.NumRows, currentRow =>
+			//for (int row = 0; row < _topoData.NumRows; row += 1)
+			// note : initializing entire location 2 region map
+			Parallel.For(0, _topoData.NumRows, currentRow =>
             {
                 for (int col = 0; col < _topoData.NumCols; col += 1)
                 {
@@ -336,9 +375,11 @@ namespace FLTTopoContour
             Reset();
 
             // ---- generate ----
-            for (int row = 0; row < _topoData.NumRows; row += 1)
+            //for (int row = 0; row < _topoData.NumRows; row += 1)
+			for (int row = rectTop; row <= rectBottom; row += 1)
             {
-                for (int col = 0; col < _topoData.NumCols; col += 1)
+                //for (int col = 0; col < _topoData.NumCols; col += 1)
+				for (int col = rectLeft; col <= rectRight; col += 1)
                 {
                     if (false == isLocationInARegion(row, col))
                     {
@@ -398,7 +439,7 @@ namespace FLTTopoContour
             // those would just find the current region (since spans are horizontal)
             foreach ( var currentSpan in sourceRegion.spanList)
             {
-                if (currentSpan.start > 0)
+                if (currentSpan.start > rectLeft ) //0)
                 {
                     var checkRegion = getRegionAt(currentSpan.row, currentSpan.start - 1);
                     checkedRegions.Add(checkRegion);
@@ -410,7 +451,7 @@ namespace FLTTopoContour
                     }
                 }
 
-                if (currentSpan.end < _topoData.NumCols - 1)
+                if (currentSpan.end < rectRight ) //_topoData.NumCols - 1)
                 {
                     var checkRegion = getRegionAt(currentSpan.row, currentSpan.end + 1);
                     checkedRegions.Add(checkRegion);

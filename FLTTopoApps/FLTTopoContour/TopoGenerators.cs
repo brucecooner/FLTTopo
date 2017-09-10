@@ -97,6 +97,8 @@ namespace FLTTopoContour
             { get; set; }
             public int MinimumRegionDataPoints
             { get; set; }
+            public Boolean OutputSVGFormat
+            { get; set; }
         };
 
         // ---- factory function ----
@@ -107,7 +109,14 @@ namespace FLTTopoContour
             switch ( setupData.Type )
             {
                 case MapType.Normal :
-                    generator = new NormalTopoMapGenerator( setupData );
+					if (setupData.OutputSVGFormat)
+					{
+						generator = new NormalTopoMapGeneratorSVG(setupData);
+					}
+					else
+					{
+						generator = new NormalTopoMapGenerator(setupData);
+					}
                     break;
                 case MapType.Gradient :
                     generator = new GradientTopoMapGenerator( setupData );
@@ -376,6 +385,22 @@ namespace FLTTopoContour
 #endif
             }
         }
+
+        // ---------------------------------------------------------
+		public static Boolean mapTypeSupportsSVG( MapType mapType )
+		{
+			// ugh, hardwired stuff, but going with it for now instead of weighing down type
+			Boolean supports = false;
+
+			switch (mapType)
+			{
+				case MapType.Normal:
+					supports = true;
+					break;
+			}
+
+			return supports;
+		}
 
         // ------------------------------------------------------
         // ---- constructor ----

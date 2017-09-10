@@ -60,6 +60,8 @@
     <Compile Include="FLTTopoDataExtensions.cs" />
     <Compile Include="Constants.cs" />
     <Compile Include="FLTDataRegionalizer.cs" />
+    <Compile Include="SVGBuilder.cs" />
+    <Compile Include="NormalTopoMapGeneratorSVG.cs" />
     <Compile Include="VectorUtil.cs" />
     <Compile Include="OptionUtils.cs" />
     <Compile Include="TopoGenerators.cs" />

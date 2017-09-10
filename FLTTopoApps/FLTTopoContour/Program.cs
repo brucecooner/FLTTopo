@@ -37,6 +37,7 @@ using OptionUtils;
     -is my capitalization all over the place?
     - add 'mark coordinates' option ?
     - only use coordinates (internally)
+    - nicer timing/logging/messaging interface
  * */
 
 namespace FLTTopoContour
@@ -69,7 +70,8 @@ namespace FLTTopoContour
             ImageWidth,         // desired width of output image (only width OR height may be specified)
             AppendCoords,       // append coordinates to vertical slice files (maybe others?)
             ImageHeightScale,   // vertical scale factor for vertical slice image files
-            MinRegionPoints     // regions of this many data points or smaller in quantized data are ignored
+            MinRegionPoints,    // regions of this many data points or smaller in quantized data are 'flattened' to next lower height
+            SVG                 // produce output in svg format
         };
 
         // TODO : settle on a capitalization scheme here!!!
@@ -152,6 +154,8 @@ namespace FLTTopoContour
         static Dictionary<String, Int32> colorsDict = null;
 
         static Boolean _appendCoordinatesToFilenames = DefaultAppendCoordinatesToFilenames;
+
+        static Boolean _outputSVGFormat = false;
 
         static float imageHeightScale = DefaultImageHeightScale;
 
@@ -562,37 +566,44 @@ namespace FLTTopoContour
             return parsed;
         }
 
+        // -----------------------------------------------------------------------
+        static private bool parseSVGFormat( String input, ref String parseErrorString )
+        {
+            _outputSVGFormat = true;
+            return true;
+        }
+
         // -------------------------------------------------------------------- 
         static private void initOptionSpecifiers()
         {
             // -- map type options --
-            mapTypeToSpecifierDict = new Dictionary< TopoMapGenerator.MapType, OptionSpecifier>( Enum.GetNames(typeof(TopoMapGenerator.MapType)).Length);
+            mapTypeToSpecifierDict = new Dictionary<TopoMapGenerator.MapType, OptionSpecifier>(Enum.GetNames(typeof(TopoMapGenerator.MapType)).Length);
 
             // TODO : more descriptive help text?
-            mapTypeToSpecifierDict.Add(TopoMapGenerator.MapType.Normal, 
-                new OptionSpecifier {   Specifier = TopoMapGenerator.MapType.Normal.ToString().ToLower(),
-                                        Description = "Normal",
-                                        HelpText = "Normal contour map" });
-            mapTypeToSpecifierDict.Add(TopoMapGenerator.MapType.Gradient, 
-                new OptionSpecifier {   Specifier = TopoMapGenerator.MapType.Gradient.ToString().ToLower(),    
-                                        Description = "Gradient",
-                                        HelpText = "Solid colors, from lo color to hi color with height" });
-            mapTypeToSpecifierDict.Add(TopoMapGenerator.MapType.AlternatingColors,        
-                new OptionSpecifier {   Specifier = TopoMapGenerator.MapType.AlternatingColors.ToString().ToLower(), 
-                                        Description = "Alternating",
-                                        HelpText = "Line colors alternate between altcolor1 and altcolor2" } );
-            mapTypeToSpecifierDict.Add(TopoMapGenerator.MapType.HorizontalSlice,    
-                new OptionSpecifier {   Specifier = TopoMapGenerator.MapType.HorizontalSlice.ToString().ToLower(),
-                                        Description = "Horizontal slice",
-                                        HelpText = "normal map, but each contour in a separate image." } );
+            mapTypeToSpecifierDict.Add(TopoMapGenerator.MapType.Normal,
+                new OptionSpecifier { Specifier = TopoMapGenerator.MapType.Normal.ToString().ToLower(),
+                    Description = "Normal",
+                    HelpText = "Normal contour map" });
+            mapTypeToSpecifierDict.Add(TopoMapGenerator.MapType.Gradient,
+                new OptionSpecifier { Specifier = TopoMapGenerator.MapType.Gradient.ToString().ToLower(),
+                    Description = "Gradient",
+                    HelpText = "Solid colors, from lo color to hi color with height" });
+            mapTypeToSpecifierDict.Add(TopoMapGenerator.MapType.AlternatingColors,
+                new OptionSpecifier { Specifier = TopoMapGenerator.MapType.AlternatingColors.ToString().ToLower(),
+                    Description = "Alternating",
+                    HelpText = "Line colors alternate between altcolor1 and altcolor2" });
+            mapTypeToSpecifierDict.Add(TopoMapGenerator.MapType.HorizontalSlice,
+                new OptionSpecifier { Specifier = TopoMapGenerator.MapType.HorizontalSlice.ToString().ToLower(),
+                    Description = "Horizontal slice",
+                    HelpText = "normal map, but each contour in a separate image." });
             mapTypeToSpecifierDict.Add(TopoMapGenerator.MapType.VerticalSliceNS,
-                new OptionSpecifier {   Specifier = TopoMapGenerator.MapType.VerticalSliceNS.ToString().ToLower(),
-                                        Description = "Vertical slice" + NorthString + "/" + SouthString,
-                                        HelpText = "vertical slices, oriented " + NorthString + "/" + SouthString + " at <contourHeights> intervals"} );
+                new OptionSpecifier { Specifier = TopoMapGenerator.MapType.VerticalSliceNS.ToString().ToLower(),
+                    Description = "Vertical slice" + NorthString + "/" + SouthString,
+                    HelpText = "vertical slices, oriented " + NorthString + "/" + SouthString + " at <contourHeights> intervals" });
             mapTypeToSpecifierDict.Add(TopoMapGenerator.MapType.VerticalSliceEW,
-                new OptionSpecifier {   Specifier = TopoMapGenerator.MapType.VerticalSliceEW.ToString().ToLower(),
-                                        Description = "Vertical slice" + EastString + "/" + WestString,
-                                        HelpText = "vertical slices, oriented " + EastString + "/" + WestString + " at <contourHeights> intervals"} );
+                new OptionSpecifier { Specifier = TopoMapGenerator.MapType.VerticalSliceEW.ToString().ToLower(),
+                    Description = "Vertical slice" + EastString + "/" + WestString,
+                    HelpText = "vertical slices, oriented " + EastString + "/" + WestString + " at <contourHeights> intervals" });
 
             optionTypeToSpecDict = new Dictionary< OptionType, OptionSpecifier>( Enum.GetNames(typeof(OptionType)).Length );
 
@@ -611,6 +622,12 @@ namespace FLTTopoContour
                 Description = "Report Timings",
                 HelpText = "report timings upon completion",
                 ParseDelegate = parseReportTimings });
+            optionTypeToSpecDict.Add(OptionType.SVG, new OptionSpecifier{
+                Specifier = "svg",
+                Description = "Scalar Vector Graphics",
+                HelpText = "output is in Scalar Vector Graphics format (not supported for all map types)",
+                ParseDelegate = parseSVGFormat,
+                ExpectsValue = false });
             optionTypeToSpecDict.Add( OptionType.Mode,          new OptionSpecifier{    
                 Specifier = "maptype", 
                 Description = "Map Type",
@@ -1187,6 +1204,16 @@ namespace FLTTopoContour
             // ----- parse program arguments -----
             Boolean parsed = parseArgs(args);
 
+			// svg adds a wrinkle in here, until it's supported for all formats, check to see if the specified map type supports it here
+			if ( _outputSVGFormat )
+			{
+				if (false == TopoMapGenerator.mapTypeSupportsSVG( outputMapType ))
+				{
+					parseErrorMessage = "Specified map type does not support SVG output.";
+					parsed = false;
+				}
+			}
+
             if ( false == parsed )
             {
                 System.Console.WriteLine();
@@ -1283,6 +1310,7 @@ namespace FLTTopoContour
                     setupData.AppendCoordinatesToFilenames = _appendCoordinatesToFilenames;
                     setupData.ImageHeightScale = imageHeightScale;
                     setupData.MinimumRegionDataPoints = minimumRegionDataPoints;
+                    setupData.OutputSVGFormat = _outputSVGFormat;
 
                     TopoMapGenerator generator = TopoMapGenerator.getGenerator( setupData );
                     generator.DetermineImageDimensions();

@@ -109,14 +109,7 @@ namespace FLTTopoContour
             switch ( setupData.Type )
             {
                 case MapType.Normal :
-					if (setupData.OutputSVGFormat)
-					{
-						generator = new NormalTopoMapGeneratorSVG(setupData);
-					}
-					else
-					{
-						generator = new NormalTopoMapGenerator(setupData);
-					}
+					generator = new NormalTopoMapGenerator(setupData);
                     break;
                 case MapType.Gradient :
                     generator = new GradientTopoMapGenerator( setupData );
@@ -145,6 +138,9 @@ namespace FLTTopoContour
 
         // ---- minimum region size ----
         protected int _minimumRegionDataPoints = 0;
+
+		// ---- output in svg ----
+		protected Boolean _svgFormat = false;
 
         // ---- rect extents ----
         // TODO : consider changing this to use lat/long instead
@@ -420,14 +416,6 @@ namespace FLTTopoContour
         // note : as the generators are pixel focused, we'll only work with indices into the topo data (for now)
         public TopoMapGenerator( GeneratorSetupData setupData )
         {
-        /*
-            (    FLTTopoData data,
-                                    int contourHeights,
-                                    String outputFilename,
-                                    int[] rectIndices,
-                                    int imageWidth, int imageHeight
-                                )
-         */
             _data = setupData.Data;
 
             _contourHeights = setupData.ContourHeights;
@@ -447,6 +435,8 @@ namespace FLTTopoContour
             _imageHeight = setupData.ImageHeight;
 
             _minimumRegionDataPoints = setupData.MinimumRegionDataPoints;
+
+			_svgFormat = setupData.OutputSVGFormat;
 
             addTimingHandler = null;
         }
@@ -685,46 +675,6 @@ namespace FLTTopoContour
         protected float heightSE( float[,] heights ) { return heights[2,2]; }
 
 	}   // end class TopoMapGenerator
-
-    // /////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public class NormalTopoMapGenerator : TopoMapGenerator
-    {
-        public override String GetName() { return "contour"; }
-
-        public NormalTopoMapGenerator( GeneratorSetupData setupData ) 
-            : base( setupData )
-        {}
-
-        // -----------------------------------------------------------------------------------------------
-        private Int32 normalTopoMapPixelDelegate( float[,] heights )
-        {
-            // current != left OR current != above
-            return ( heightCurrent( heights ) != heightW(heights) || heightCurrent(heights) != heightN(heights)) ? _contourLineColor : _backgroundColor;
-        }
-
-        // -----------------------------------------------------------------------------------------------
-        public override void Generate()
-        {
-            _generatorPixelDelegate = normalTopoMapPixelDelegate;
-
-            // -- quantize --
-            System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
-            stopwatch.Reset();
-            stopwatch.Start();
-
-            _data.Quantize(_contourHeights);
-
-            stopwatch.Stop();
-            addTiming("quantization", stopwatch.ElapsedMilliseconds);
-            stopwatch.Reset();
-            stopwatch.Start();
-
-            processMinimumRegions();
-
-            // can use default generator 
-            DefaultGenerate();
-        }
-    }
 
     // /////////////////////////////////////////////////////////////////////////////////////////////////////////
     public class AlternatingColorContourMapGenerator : TopoMapGenerator

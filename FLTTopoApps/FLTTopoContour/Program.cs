@@ -721,7 +721,7 @@ namespace FLTTopoContour
                 ParseDelegate = parseImageHeightScale,
                 ExpectsValue = true });
             optionTypeToSpecDict.Add(OptionType.MinRegionPoints, new OptionSpecifier{
-                Specifier = "minRegionPoints",
+                Specifier = "minregionpoints",
                 Description = "Minimum Data Points",
                 HelpText = "<num points> exclude regions of this many data points or fewer (in quantized source data) from output",
                 ParseDelegate = parseMinumRegionPoints,
@@ -904,6 +904,7 @@ namespace FLTTopoContour
                 Console.WriteLine(optionTypeToSpecDict[OptionType.ContourHeights].Description + " : " + contourHeights);
                 Console.WriteLine(optionTypeToSpecDict[OptionType.ReportTimings].Description + " : " + (reportTimings ? "yes" : "no"));
                 Console.WriteLine(optionTypeToSpecDict[OptionType.AppendCoords].Description + " : " + (_appendCoordinatesToFilenames ? "yes" : "no"));
+				Console.WriteLine(optionTypeToSpecDict[OptionType.SVG].Description + " : " + (_outputSVGFormat ? "yes" : "no"));
                 if (minimumRegionDataPoints > 0)
                 {
                     Console.WriteLine(optionTypeToSpecDict[OptionType.MinRegionPoints].Description + " : " + minimumRegionDataPoints);

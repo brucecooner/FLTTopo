@@ -17,20 +17,106 @@ namespace FLTTopoContour
 
     public class FLTDataRegionalizer
     {
-        // utility types
-        // ---------------------------------------
-        // describes a horizontal run of contiguous points of the same value
-        public class Span
-        {
-            public int start = 0;   // start and end columns
-            public int end = 0;
+		// utility types
+		// ---------------------------------------
+		// describes a horizontal run of contiguous points of the same value
+		public class Span
+		{
+            static uint _nextSpanID = 1;
+            private static uint getNextRegionID()
+            {
+                uint returnID = _nextSpanID;
+                _nextSpanID += 1;
+                return returnID;
+            }
+            public uint Id = 0;
 
-            public int row = 0;
+			// ---- constructor ----
+			public Span()
+			{
+                Id = getNextRegionID();
+			}
 
-            // these should be sorted on column start values, for reasons
-            public List<Span> spansAbove = new List<Span>();    // spans where row < this.row
-            public List<Span> spansBelow = new List<Span>();    // spans where row > this.row
-        }
+			public int start = 0;   // start and end columns
+			public int end = 0;
+
+			public int row = 0;
+
+			// ---- spans above/below ----
+			// TODO: describe in more detail
+			// these should be sorted on column start values, for reasons
+			public List<Span> spansAbove = new List<Span>();    // overlapping spans where row == this.row - 1
+			public List<Span> spansBelow = new List<Span>();    // overlapping spans where row == this.row + 1
+
+			public Boolean hasSpansAbove { get { return spansAbove.Count > 0; } }
+			public Boolean hasSpansBelow { get {  return spansBelow.Count > 0; } }
+			
+			public void addSpanAbove(Span addSpan)
+			{
+				// add in sorted order
+				Boolean added = false;
+				if (spansAbove.Count > 0)
+				{
+					for (int index = 0; index < spansAbove.Count; index += 1)
+					{
+						if (addSpan.start < spansAbove[index].start)
+						{
+							spansAbove.Insert(index, addSpan);
+							added = true;
+							break;
+						}
+					}
+				}
+
+				if (false == added)
+				{
+					spansAbove.Add(addSpan);
+				}
+				// spans shouldn't be referencing themselves
+				if ( addSpan.Id == Id )
+				{
+					throw new System.Exception("addSpanAbove() references same span");
+				}
+			}
+
+			public void addSpanBelow(Span addSpan)
+			{
+				// add in sorted order
+				Boolean added = false;
+				if (spansBelow.Count > 0)
+				{
+					for (int index = 0; index < spansBelow.Count; index += 1)
+					{
+						if (addSpan.start < spansBelow[index].start)
+						{
+							spansBelow.Insert(index,addSpan);
+							added = true;
+							break;
+						}
+					}
+				}
+
+				if (false == added)
+				{
+					spansBelow.Add(addSpan);
+				}
+				// spans shouldn't be referencing themselves 
+				if ( addSpan.Id == Id )
+				{
+					throw new System.Exception("addSpanBelow() references same span");
+				}
+			}
+
+			// ---- spans left/right ----
+			// 'sibling' spans are those to the immediate left or right which share a
+			// common, overlapping span above and/or below. Currently no record is kept
+			// of whether the sibling is shared via an upper and/or lower span.
+			public Span spanLeft = null;	
+			public Span spanRight = null;
+
+			public Boolean hasLeftSibling {  get {  return null != spanLeft; } }
+			public Boolean hasRightSibling {  get {  return null != spanRight; } }
+		}
 
         // ================================================================
         // describes a 2-d area of points of the same value which all touch
@@ -54,6 +140,8 @@ namespace FLTTopoContour
             public float regionValue = 0;
 
             public List<Span> spanList = new List<Span>();
+			// maps row to spans (though not in any order) (for debugging currently, leave null if not in use)
+			public Dictionary<int, List<Span>> rowToSpanListMap = new Dictionary<int, List<Span>>();
 
             // span with the minimum column AMONG the spans with the minimum row
             public Span minRowMinColSpan = null;
@@ -107,6 +195,15 @@ namespace FLTTopoContour
                         }
                     }
                 }
+
+				if (null != rowToSpanListMap)
+				{
+					if (false == rowToSpanListMap.ContainsKey(spanToAdd.row))
+					{
+						rowToSpanListMap[spanToAdd.row] = new List<Span>();
+					}
+					rowToSpanListMap[spanToAdd.row].Add(spanToAdd);
+				}
             }
         }
 
@@ -175,6 +272,7 @@ namespace FLTTopoContour
 
             _topoData = setupData.topoData;
 
+			// TODO: if setupData.RectIndices is null, default to whole rect
 			_rectIndices = setupData.RectIndices;
 
 			// TODO: validate rect!
@@ -187,6 +285,12 @@ namespace FLTTopoContour
         private Span getSpan(int row, int col, Region containingRegion)
         {
             var newSpan = new Span();
+
+			// TESTING SOMETHING...
+			if (newSpan.Id == 5)
+			{
+				var breakpoint = 10;
+			}
 
             newSpan.start = col;
             newSpan.end = col;
@@ -244,10 +348,10 @@ namespace FLTTopoContour
 
         // ----------------------------------------------------------------
         // gets spans on specified row that horizontally overlap specified sourceSpan
-        // new spans are contained by containingRegion
+        // -new spans are contained by containingRegion
         // -these neighbor spans may extend PAST ends of sourceSpan
         // -may return an empty list
-        private List<Span> getNeighborSpans(Span sourceSpan, int row, Region containingRegion)
+        private List<Span> getOverlappingSpans(Span sourceSpan, int row, Region containingRegion)
         {
             var newSpans = new List<Span>();
 
@@ -255,6 +359,8 @@ namespace FLTTopoContour
 
             // find first location above sourceSpan that matches and has not been checked
             int currentCol = sourceSpan.start;
+
+			Span lastSpan = null;
 
             // keep finding spans until we're past the end of the source span
             while (		(currentCol <= sourceSpan.end)
@@ -269,18 +375,7 @@ namespace FLTTopoContour
 
                     newSpans.Add(newSpan);
 
-                    if (row < sourceSpan.row)
-                    {
-                        sourceSpan.spansAbove.Add(newSpan);
-
-                        newSpan.spansBelow.Add(newSpan);
-                    }
-                    else
-                    {
-                        sourceSpan.spansBelow.Add(newSpan);
-
-                        newSpan.spansAbove.Add(newSpan);
-                    }
+					lastSpan = newSpan;
 
                     currentCol = newSpan.end + 1;
                 }
@@ -292,6 +387,104 @@ namespace FLTTopoContour
 
             return newSpans;
         }
+
+		// ----------------------------------------------------------------
+		// checks for horizontal overlap of specified spans
+		private Boolean spansOverlap(Span span1, Span span2)
+		{
+			// I think you only need two tests here
+			return (span1.start <= span2.end) && (span1.end >= span2.start);
+		}
+
+		// ----------------------------------------------------------------
+		private void connectSpanToOverlappingSpansOnAdjacentRows( Span spanBeingConnected, Region region )
+		{
+			// check spans above
+			if (spanBeingConnected.row > rectTop && region.rowToSpanListMap.ContainsKey(spanBeingConnected.row - 1))
+			{
+				var aboveRowSpans = region.rowToSpanListMap[spanBeingConnected.row - 1];
+
+				foreach (var currentAboveSpan in aboveRowSpans)
+				{
+					if (spansOverlap(spanBeingConnected, currentAboveSpan))
+					{
+						spanBeingConnected.addSpanAbove(currentAboveSpan);
+					}
+				}
+			}
+			// check spans below
+			if (spanBeingConnected.row < rectBottom && region.rowToSpanListMap.ContainsKey(spanBeingConnected.row + 1)) 
+			{
+				var belowRowSpans = region.rowToSpanListMap[spanBeingConnected.row + 1];
+
+				foreach (var currentBelowSpan in belowRowSpans)
+				{
+					if (spansOverlap(spanBeingConnected, currentBelowSpan))
+					{
+						spanBeingConnected.addSpanBelow(currentBelowSpan);
+					}
+				}
+			}
+		}
+
+		// ----------------------------------------------------------------
+		// requires the above/below lists to have been completed already
+		// requires the above/below lists to be sorted on column
+		// major optimization, if this span discovers a sibling, it could point those 
+		// siblings back to itself, then future checks could early out if siblings have already been discovered.
+		private void connectToSiblingSpans(Span spanBeingConnected )
+		{
+			if (spanBeingConnected.hasSpansAbove)
+			{
+				// get leftmost span above one being connected
+				var leftmostSpanAbove = spanBeingConnected.spansAbove.First();
+
+				// this will only work if the leftmostSpanAbove has this span in its spansBelow 
+				// list, which it should if the above/below lists are built correctly
+				var spanBeingConnectedIndexInAboveSpanBelowList = leftmostSpanAbove.spansBelow.IndexOf(spanBeingConnected);
+
+				// as long as checked span is not first in list, set its left sibling to the previous one
+				if (spanBeingConnectedIndexInAboveSpanBelowList > 0)
+				{
+					spanBeingConnected.spanLeft = leftmostSpanAbove.spansBelow[ spanBeingConnectedIndexInAboveSpanBelowList - 1];
+				}
+
+				var rightmostSpanAbove = spanBeingConnected.spansAbove.Last();
+
+				spanBeingConnectedIndexInAboveSpanBelowList = rightmostSpanAbove.spansBelow.IndexOf(spanBeingConnected);
+
+				if (spanBeingConnectedIndexInAboveSpanBelowList < rightmostSpanAbove.spansBelow.Count - 1)
+				{
+					spanBeingConnected.spanRight = rightmostSpanAbove.spansBelow[spanBeingConnectedIndexInAboveSpanBelowList + 1];
+				}
+			}
+
+			// if left/right were not found, look for them via below spans
+			if (spanBeingConnected.hasSpansBelow)
+			{
+				if (null == spanBeingConnected.spanLeft)
+				{
+					var leftmostSpanBelow = spanBeingConnected.spansBelow.First();
+					var spanBeingConnectedIndexInBelowSpanAboveList = leftmostSpanBelow.spansAbove.IndexOf(spanBeingConnected);
+
+					if (spanBeingConnectedIndexInBelowSpanAboveList > 0)
+					{
+						spanBeingConnected.spanLeft = leftmostSpanBelow.spansAbove[ spanBeingConnectedIndexInBelowSpanAboveList - 1];
+					}
+				}	
+				
+				if (null == spanBeingConnected.spanRight)
+				{
+					var rightmostSpanBelow = spanBeingConnected.spansBelow.Last();
+					var spanBeingConnectedIndexInBelowSpanAboveList = rightmostSpanBelow.spansAbove.IndexOf(spanBeingConnected);
+
+					if (spanBeingConnectedIndexInBelowSpanAboveList < rightmostSpanBelow.spansAbove.Count - 1)
+					{
+						spanBeingConnected.spanRight = rightmostSpanBelow.spansAbove[ spanBeingConnectedIndexInBelowSpanAboveList + 1 ];
+					}
+				}			
+			}
+		}
 
         // ----------------------------------------------------------------
         // finds region of points that touch specified row,col in topoData that are of same value
@@ -315,7 +508,7 @@ namespace FLTTopoContour
                 // get spans above
                 if (checkSpan.row > rectTop ) // 0)
                 {
-                    var aboveSpans = getNeighborSpans(checkSpan, checkSpan.row - 1, newRegion);
+                    var aboveSpans = getOverlappingSpans(checkSpan, checkSpan.row - 1, newRegion);
 
                     spansToCheck.AddRange(aboveSpans);
                 }
@@ -323,7 +516,7 @@ namespace FLTTopoContour
                 // get spans below
                 if (checkSpan.row < rectBottom ) // _topoData.NumRows - 1)
                 {
-                    var belowSpans = getNeighborSpans(checkSpan, checkSpan.row + 1, newRegion);
+                    var belowSpans = getOverlappingSpans(checkSpan, checkSpan.row + 1, newRegion);
 
                     spansToCheck.AddRange(belowSpans);
                 }
@@ -331,6 +524,18 @@ namespace FLTTopoContour
                 // done checking, add span to region
                 newRegion.AddSpan(checkSpan);
             }
+
+			// connect up above/below spans
+			foreach (var currentSpan in newRegion.spanList )
+			{
+				connectSpanToOverlappingSpansOnAdjacentRows(currentSpan, newRegion);
+			}
+
+			// above/below spans must be fully built before sibling discovery
+			foreach (var currentSpan in newRegion.spanList )
+			{
+				connectToSiblingSpans(currentSpan);
+			}
 
             return newRegion;
         }
@@ -390,19 +595,9 @@ namespace FLTTopoContour
                 }
             }
 
-#if false
-            // ---- integrity checks? ----
-            // every point in data should be in a region
-            for (int row = 0; row < _topoData.NumRows; row += 1)
-            {
-                for (int col = 0; col < _topoData.NumCols; col += 1)
-                {
-                    if (false == isLocationInARegion(row, col))
-                    {
-                        throw new System.Exception("Regionalization did not cover point at " + row + "," + col);
-                    }
-                }
-            }
+#if true
+			//EveryPointShouldBeInARegion();
+			 SiblingSpansShouldBeSortedOnStartCol();
 #endif
         }   // end GenerateRegions()
 
@@ -516,5 +711,84 @@ namespace FLTTopoContour
 
             return returnStrings;
         }
-    }
+
+		// ------------------------------------------------------------------------------------
+		// helpers to generate test data
+		public Region GenerateSquareRegion(int squareTop, int squareLeft, int squareBottom, int squareRight)
+		{
+			// TODO: validate parameters
+
+			var testRegion = new Region();
+
+			Span previousSpan = null;
+
+			for (int currentRow = squareTop; currentRow <= squareBottom; currentRow += 1)
+			{
+				var newSpan = new Span();
+
+				newSpan.start = squareLeft;
+				newSpan.end = squareRight;
+				newSpan.row = currentRow;
+
+				if (currentRow > squareTop)
+				{
+					newSpan.addSpanAbove(previousSpan);
+					previousSpan.addSpanBelow(newSpan);
+				}
+
+				previousSpan = newSpan;
+
+				testRegion.AddSpan(newSpan);
+			}
+
+			return testRegion;
+		}
+
+		// ---------------------------------------------------------------------------
+		// tests expections about data
+		private void EveryPointShouldBeInARegion()
+		{
+			for (int row = 0;row < _topoData.NumRows;row += 1)
+			{
+				for (int col = 0;col < _topoData.NumCols;col += 1)
+				{
+					if (false == isLocationInARegion(row,col))
+					{
+						throw new System.Exception("Regionalization did not cover point at " + row + "," + col);
+					}
+				}
+			}
+		}
+		// ---------------------------------------------------------------------------
+		private void SiblingSpansShouldBeSortedOnStartCol()
+		{
+			// all spans on the same row above or below a single span (siblings in local vernacular) should be sorted on start col
+			foreach (var currentRegion in RegionList())
+			{
+				foreach (var currentSpan in currentRegion.spanList)
+				{
+					if (currentSpan.hasSpansAbove)
+					{
+						for (int index = 1; index < currentSpan.spansAbove.Count; index += 1)
+						{
+							if (currentSpan.spansAbove[index-1].start > currentSpan.spansAbove[index].start)
+							{
+								throw new System.Exception("sibling spans in region " + currentRegion.Id + " row " + currentSpan.row + " not sorted on start column");
+							}
+						}
+					}
+					if (currentSpan.hasSpansBelow)
+					{
+						for (int index = 1; index < currentSpan.spansBelow.Count; index += 1)
+						{
+							if (currentSpan.spansBelow[index-1].start > currentSpan.spansBelow[index].start)
+							{
+								throw new System.Exception("sibling spans in region " + currentRegion.Id + " row " + currentSpan.row + "  not sorted on start column");
+							}
+						}
+					}
+				}
+			}
+		}
+}
 }

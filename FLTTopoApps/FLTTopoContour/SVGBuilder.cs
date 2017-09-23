@@ -13,6 +13,9 @@ namespace SVGBuilder
 
 		private List<List<Tuple<int,int>>> _paths = new List<List<Tuple<int,int>>>();
 
+		private long _XTranslate = 0;
+		private long _YTranslate = 0;
+
 		// --------------------------------------------
 		// constructor 
         public Builder()
@@ -25,6 +28,13 @@ namespace SVGBuilder
 		{
 			_width = newWidth;
 			_height = newHeight;
+		}
+
+		// -----------------------------------------------------------
+		public void SetTranslate( long xTranslate, long yTranslate )
+		{
+			_XTranslate = xTranslate;
+			_YTranslate = yTranslate;
 		}
 
 		// -----------------------------------------------------------
@@ -54,7 +64,8 @@ namespace SVGBuilder
 				String prefix = first ? "M" : "L";
 				first = false;
 
-				file.Write(prefix + currentPoint.Item1 + " " + currentPoint.Item2 + " ");
+				//file.Write(prefix + currentPoint.Item1 + " " + currentPoint.Item2 + " ");
+				file.Write(prefix + (currentPoint.Item1 + _XTranslate) + " " + (currentPoint.Item2 + _YTranslate) + " ");
 			}
 
 			// close path

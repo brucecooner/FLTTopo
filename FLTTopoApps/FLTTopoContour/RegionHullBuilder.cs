@@ -19,7 +19,7 @@ namespace FLTTopoContour
 		public static List<Tuple<int,int>> getListOfRegionEdgeCoords(FLTDataRegionalizer.Region region)
 		{
 			// Notes: 
-			// - As regions are taken from data points arranged like pixels on a screen, any directions are relative to a coordinate
+			// - As regions are taken from data points arranged like pixels on a screen, direction labels are relative to a coordinate
 			//   system with origin at top left corner, with x increasing to the 'right' and y increasing 'down'.
 			// - Algorithm starts at the top left (i.e. northwestern) most point in the region, and crawls around the region in a
 			//   counter-clockwise manner.

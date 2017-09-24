@@ -7,8 +7,6 @@ using System.Threading.Tasks;
 using SVGBuilder;
 
 // TODO:
-// -translate generated points to origin
-// -move point generation to central location
 // -optimize paths
 // -detect existing outputfilename extension
 
@@ -103,7 +101,7 @@ namespace FLTTopoContour
 			//this._rectIndices[RectBottomIndex] = 1000;
 
 			// ---- regions ----
-			timer.Start();
+			timer.ResetAndStart();
 
 			var regionalizerSetup = new FLTDataRegionalizer.RegionalizerSetupData();
 			regionalizerSetup.topoData = _data;
@@ -116,32 +114,37 @@ namespace FLTTopoContour
 			timer.Stop();
 			addTiming("region discovery", timer.ElapsedMilliseconds);
 
-			// ---- paths ----
-			Console.WriteLine("Making points lists");
+			// ---- hulls ----
+			Console.WriteLine("Discovering edges");
 
-			timer.Start();
+			timer.ResetAndStart();
 
-			var pointsLists = new List<List<Tuple<int,int>>>();
+			var regionsList = regionalizer.RegionList();
 
-			foreach (var currentRegion in regionalizer.RegionList())
+			var pointsListsArray = new List<Tuple<int,int>>[regionsList.Count];
+
+			// parallelization only makes a few thousandths of a second difference, possibly because there's very little actual math
+#if FALSE
+			for (int regionIndex = 0; regionIndex < regionsList.Count; regionIndex += 1)
 			{
-				var currentPoints = RegionHullBuilder.getListOfRegionEdgeCoords(currentRegion);
-
-				totalPoints += currentPoints.Count;
-
-				pointsLists.Add(currentPoints);
+				pointsListsArray[ regionIndex ] = RegionHullBuilder.getListOfRegionEdgeCoords(regionsList[regionIndex]);
 			}
-
+#else
+			Parallel.For(0, regionsList.Count, regionIndex =>
+			{
+				pointsListsArray[ regionIndex ] = RegionHullBuilder.getListOfRegionEdgeCoords(regionsList[regionIndex]);
+			});
+#endif
 			timer.Stop();
-			addTiming("path discovery", timer.ElapsedMilliseconds);
+			addTiming("edge discovery", timer.ElapsedMilliseconds);
 
 			Console.WriteLine("Generated total of " + totalPoints + " points.");
 
 			Console.WriteLine("Building svg");
 
-			timer.Start();
 
 			// ---- svg ----
+			timer.ResetAndStart();
             var svgBuilder = new SVGBuilder.Builder();
 
 			// move to origin
@@ -149,7 +152,7 @@ namespace FLTTopoContour
 			// size to rect
 			svgBuilder.SetWidthAndHeight( rectRight - rectLeft + 1, rectBottom - rectTop + 1);
 
-			foreach (var currentPoints in pointsLists)
+			foreach (var currentPoints in pointsListsArray)
 			{
 				svgBuilder.addPath(currentPoints);
 			}

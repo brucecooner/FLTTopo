@@ -26,6 +26,15 @@ namespace Timing
 		}
 
 		// ----------------------
+		public void ResetAndStart()
+		{
+			number_of_timings = 0;
+			total_milliseconds = 0;
+
+			Start();
+		}
+
+		// ----------------------
 		public void Stop()
 		{
 			_stopwatch.Stop();

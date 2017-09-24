@@ -73,14 +73,12 @@ namespace FLTTopoContour
 			var totalPoints = 0;
 
             // -- quantize --
-            System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
-            stopwatch.Reset();
-            stopwatch.Start();
+			var timer = new Timing.Timer(true);
 
             _data.Quantize(_contourHeights);
 
-            stopwatch.Stop();
-            addTiming("quantization", stopwatch.ElapsedMilliseconds);
+            timer.Stop();
+            addTiming("quantization", timer.ElapsedMilliseconds);
 
 			// TESTING
 			// build a square 'donut' into the topo data
@@ -104,17 +102,25 @@ namespace FLTTopoContour
 			//this._rectIndices[RectRightIndex] = 1000;
 			//this._rectIndices[RectBottomIndex] = 1000;
 
-			
+			// ---- regions ----
+			timer.Start();
+
 			var regionalizerSetup = new FLTDataRegionalizer.RegionalizerSetupData();
 			regionalizerSetup.topoData = _data;
 			regionalizerSetup.RectIndices = this._rectIndices;
-
 
 			var regionalizer = new FLTDataRegionalizer(regionalizerSetup);
 
 			regionalizer.GenerateRegions();
 
+			timer.Stop();
+			addTiming("region discovery", timer.ElapsedMilliseconds);
+
+			// ---- paths ----
 			Console.WriteLine("Making points lists");
+
+			timer.Start();
+
 			var pointsLists = new List<List<Tuple<int,int>>>();
 
 			foreach (var currentRegion in regionalizer.RegionList())
@@ -126,9 +132,16 @@ namespace FLTTopoContour
 				pointsLists.Add(currentPoints);
 			}
 
+			timer.Stop();
+			addTiming("path discovery", timer.ElapsedMilliseconds);
+
 			Console.WriteLine("Generated total of " + totalPoints + " points.");
 
 			Console.WriteLine("Building svg");
+
+			timer.Start();
+
+			// ---- svg ----
             var svgBuilder = new SVGBuilder.Builder();
 
 			// move to origin
@@ -142,6 +155,9 @@ namespace FLTTopoContour
 			}
 
             svgBuilder.TestMakingAFile(_outputFilename + ".svg");
+
+			timer.Stop();
+			addTiming("svg creation", timer.ElapsedMilliseconds);
         }
 	}
 

@@ -40,7 +40,10 @@ namespace SVGBuilder
 		// -----------------------------------------------------------
 		public void addPath(List<Tuple<int,int>> addPath)
 		{
-			_paths.Add(addPath);			
+			if (addPath.Count > 0)
+			{
+				_paths.Add(addPath);
+			}
 		}
 
 		// ------------------------------------------------------------

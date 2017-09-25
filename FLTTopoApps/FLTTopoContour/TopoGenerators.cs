@@ -137,7 +137,10 @@ namespace FLTTopoContour
         protected String _outputFilename;
 
         // ---- minimum region size ----
-        protected int _minimumRegionDataPoints = 0;
+		const int DEFAULT_MINIMUM_REGION_DATA_POINTS = 0;
+        protected int _minimumRegionDataPoints = DEFAULT_MINIMUM_REGION_DATA_POINTS;
+
+		protected Boolean isMinimumRegionDataPointsSpecified { get { return _minimumRegionDataPoints != DEFAULT_MINIMUM_REGION_DATA_POINTS; } }
 
 		// ---- output in svg ----
 		protected Boolean _svgFormat = false;

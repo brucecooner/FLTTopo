@@ -123,17 +123,47 @@ namespace FLTTopoContour
 
 			var pointsListsArray = new List<Tuple<int,int>>[regionsList.Count];
 
-			// parallelization only makes a few thousandths of a second difference, possibly because there's very little actual math
-#if FALSE
-			for (int regionIndex = 0; regionIndex < regionsList.Count; regionIndex += 1)
-			{
-				pointsListsArray[ regionIndex ] = RegionHullBuilder.getListOfRegionEdgeCoords(regionsList[regionIndex]);
-			}
-#else
+			// parallelization only makes a thousandth of a second difference here, possibly because there's very little math involved
+#if TRUE
 			Parallel.For(0, regionsList.Count, regionIndex =>
 			{
-				pointsListsArray[ regionIndex ] = RegionHullBuilder.getListOfRegionEdgeCoords(regionsList[regionIndex]);
+				Boolean includeCurrentRegion = true;
+
+				if (		isMinimumRegionDataPointsSpecified 
+						&&	(regionsList[regionIndex].totalDataPoints <= _minimumRegionDataPoints))
+				{
+					includeCurrentRegion = false;
+				}
+
+				if (includeCurrentRegion)
+				{
+					pointsListsArray[regionIndex] = RegionHullBuilder.getListOfRegionEdgeCoords(regionsList[regionIndex]);
+				}
+				else
+				{
+					pointsListsArray[ regionIndex ] = new List<Tuple<int,int>>();
+				}
 			});
+#else
+			for (int regionIndex = 0; regionIndex < regionsList.Count; regionIndex += 1)
+			{
+				Boolean includeCurrentRegion = true;
+
+				if (		isMinimumRegionDataPointsSpecified 
+						&&	(regionsList[regionIndex].totalDataPoints <= _minimumRegionDataPoints))
+				{
+					includeCurrentRegion = false;
+				}
+
+				if (includeCurrentRegion)
+				{
+					pointsListsArray[ regionIndex ] = RegionHullBuilder.getListOfRegionEdgeCoords(regionsList[regionIndex]);
+				}	
+				else
+				{
+					pointsListsArray[ regionIndex ] = new List<Tuple<int,int>>();
+				}
+			}
 #endif
 			timer.Stop();
 			addTiming("edge discovery", timer.ElapsedMilliseconds);

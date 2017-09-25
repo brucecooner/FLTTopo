@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using SVGBuilder;
 
 // TODO:
-// -optimize paths
+// -optimize paths (define "optimize")
 // -detect existing outputfilename extension
 
 
@@ -32,6 +32,12 @@ namespace FLTTopoContour
         // -----------------------------------------------------------------------------------------------
         public override void Generate()
         {
+			// TODO: create a testing "type" and move this out
+#if FALSE
+			RunTests();
+			return;
+#endif
+
 			if (_svgFormat)
 			{
 				generateSVG();
@@ -78,28 +84,6 @@ namespace FLTTopoContour
             timer.Stop();
             addTiming("quantization", timer.ElapsedMilliseconds);
 
-			// TESTING
-			// build a square 'donut' into the topo data
-			//_data.SetRegionToHeight(0, 0, 100, 100, 100.0f);
-			//_data.SetRegionToHeight(3, 3, 6, 6, 200.0f);
-			//_data.SetRegionToHeight(40, 40, 60, 60, 300.0f);
-
-			// build a square with two tabs, top and bottom
-			//_data.SetRegionToHeight(0, 0, 100, 100, 100.0f);
-			//_data.SetRegionToHeight(20, 20, 80, 80, 200.0f);
-			// top tabs
-			//_data.SetRegionToHeight(22, 10, 40, 19, 200.0f);
-			//_data.SetRegionToHeight(60, 10, 75, 19, 200.0f);
-			// bottom tabs
-			//_data.SetRegionToHeight(22, 81, 40, 87, 200.0f);
-			//_data.SetRegionToHeight(60, 81, 75, 87, 200.0f);
-
-			// TESTING change rect indices
-			//this._rectIndices[RectLeftIndex] = 0;
-			//this._rectIndices[RectTopIndex] = 0;
-			//this._rectIndices[RectRightIndex] = 1000;
-			//this._rectIndices[RectBottomIndex] = 1000;
-
 			// ---- regions ----
 			timer.ResetAndStart();
 
@@ -137,7 +121,9 @@ namespace FLTTopoContour
 
 				if (includeCurrentRegion)
 				{
-					pointsListsArray[regionIndex] = RegionHullBuilder.getListOfRegionEdgeCoords(regionsList[regionIndex]);
+					var hullBuilder = new RegionHullBuilder();
+
+					pointsListsArray[regionIndex] = hullBuilder.getListOfRegionEdgeCoords(regionsList[regionIndex]);
 				}
 				else
 				{
@@ -145,6 +131,9 @@ namespace FLTTopoContour
 				}
 			});
 #else
+			// WARNING : non-maintained code
+			var hullBuilder = new RegionHullBuilder();
+
 			for (int regionIndex = 0; regionIndex < regionsList.Count; regionIndex += 1)
 			{
 				Boolean includeCurrentRegion = true;
@@ -157,7 +146,8 @@ namespace FLTTopoContour
 
 				if (includeCurrentRegion)
 				{
-					pointsListsArray[ regionIndex ] = RegionHullBuilder.getListOfRegionEdgeCoords(regionsList[regionIndex]);
+					hullBuilder.Reset();
+					pointsListsArray[ regionIndex ] = hullBuilder.getListOfRegionEdgeCoords(regionsList[regionIndex]);
 				}	
 				else
 				{
@@ -192,6 +182,145 @@ namespace FLTTopoContour
 			timer.Stop();
 			addTiming("svg creation", timer.ElapsedMilliseconds);
         }
-	}
+
+		// --------------------------------------------------------------------------------
+		// TESTING
+		// TODO: better place to put tests, use proper harness, yada yada
+		// complicated by fact we need _data already loaded, and it's hard to mock, need to fix that...
+		// --------------------------------------------------------------------------------
+		private void RunTests()
+		{
+			Test_SingleRowRegionIsIgnoredByHullBuilder();
+			Test_SingleColumnRegionIsIgnoredByHullBuilder();
+		}
+
+		// --------------------------------------------------------------------------------
+		private void Test_SingleRowRegionIsIgnoredByHullBuilder()
+		{
+			Console.WriteLine("Testing single row region is ignored");
+
+			if (false == _data.isQuantized)
+			{
+				_data.Quantize(_contourHeights);
+			}
+
+			_data.SetRegionToHeight(0,0, 100,0, 100.0f);
+
+			var regionalizerSetup = new FLTDataRegionalizer.RegionalizerSetupData();
+			regionalizerSetup.topoData = _data;
+
+			var testRectIndices = new int[4];
+			testRectIndices[RectLeftIndex] = 0;
+			testRectIndices[RectTopIndex] = 0;
+			testRectIndices[RectRightIndex] = 100;
+			testRectIndices[RectBottomIndex] = 0;
+			regionalizerSetup.RectIndices = testRectIndices;			
+
+			var regionalizer = new FLTDataRegionalizer(regionalizerSetup);
+
+			regionalizer.GenerateRegions();
+
+			var regionList = regionalizer.RegionList();
+
+			// expect 1 region here (not really the test, I know, should make a test for this)
+			if (regionList.Count != 1)
+			{
+				Console.WriteLine("FAILED (unexpected number of regions ("+ regionList.Count +") in test data)");
+				return;
+			}
+			else
+			{
+				var hullBuilder = new RegionHullBuilder();
+
+				var pointsList = hullBuilder.getListOfRegionEdgeCoords(regionList[0]);
+
+				if (pointsList.Count == 0)
+				{
+					Console.WriteLine("PASSED");
+				}
+				else
+				{
+					Console.WriteLine("FAILED (unexpected number of regions ("+ pointsList.Count +") in test data");
+				}
+			}
+		}
+
+		// --------------------------------------------------------------------------------
+		private void Test_SingleColumnRegionIsIgnoredByHullBuilder()
+		{
+			Console.WriteLine("Testing single column region is ignored");
+
+			if (false == _data.isQuantized)
+			{
+				_data.Quantize(_contourHeights);
+			}
+
+			_data.SetRegionToHeight(0,0, 100,0, 100.0f);
+
+			var regionalizerSetup = new FLTDataRegionalizer.RegionalizerSetupData();
+			regionalizerSetup.topoData = _data;
+
+			var testRectIndices = new int[4];
+			testRectIndices[RectLeftIndex] = 0;
+			testRectIndices[RectTopIndex] = 0;
+			testRectIndices[RectRightIndex] = 0;
+			testRectIndices[RectBottomIndex] = 100;
+			regionalizerSetup.RectIndices = testRectIndices;			
+
+			var regionalizer = new FLTDataRegionalizer(regionalizerSetup);
+
+			regionalizer.GenerateRegions();
+
+			var regionList = regionalizer.RegionList();
+
+			// expect 1 region here (not really the test, I know, should make a test for this)
+			// there's actually a bug in this
+			if (regionList.Count != 1)
+			{
+				Console.WriteLine("FAILED (unexpected number of regions ("+ regionList.Count +") in test data)");
+				return;
+			}
+			else
+			{
+				var hullBuilder = new RegionHullBuilder();
+
+				var pointsList = hullBuilder.getListOfRegionEdgeCoords(regionList[0]);
+
+				if (pointsList.Count == 0)
+				{
+					Console.WriteLine("PASSED");
+				}
+				else
+				{
+					Console.WriteLine("FAILED (unexpected number of regions ("+ pointsList.Count +") in test data");
+				}
+			}
+		}
+
+		// TESTING CODE DUMPING GROUNDS
+			// SVG TEST STUFF
+			// build a square 'donut' into the topo data
+			//_data.SetRegionToHeight(0, 0, 100, 100, 100.0f);
+			//_data.SetRegionToHeight(3, 3, 6, 6, 200.0f);
+			//_data.SetRegionToHeight(40, 40, 60, 60, 300.0f);
+
+			// build a square with two tabs, top and bottom
+			//_data.SetRegionToHeight(0, 0, 100, 100, 100.0f);
+			//_data.SetRegionToHeight(20, 20, 80, 80, 200.0f);
+			// top tabs
+			//_data.SetRegionToHeight(22, 10, 40, 19, 200.0f);
+			//_data.SetRegionToHeight(60, 10, 75, 19, 200.0f);
+			// bottom tabs
+			//_data.SetRegionToHeight(22, 81, 40, 87, 200.0f);
+			//_data.SetRegionToHeight(60, 81, 75, 87, 200.0f);
+
+			// TESTING change rect indices
+			/*
+			_rectIndices[RectLeftIndex] = 0;
+			_rectIndices[RectTopIndex] = 0;
+			_rectIndices[RectRightIndex] = 1000;
+			_rectIndices[RectBottomIndex] = 1000;
+			*/
+	} // end NormalTopoMapGenerator
 
 }

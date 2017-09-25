@@ -286,12 +286,6 @@ namespace FLTTopoContour
         {
             var newSpan = new Span();
 
-			// TESTING SOMETHING...
-			if (newSpan.Id == 5)
-			{
-				var breakpoint = 10;
-			}
-
             newSpan.start = col;
             newSpan.end = col;
             newSpan.row = row;

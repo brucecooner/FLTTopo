@@ -37,7 +37,8 @@ using OptionUtils;
     -is my capitalization all over the place?
     - add 'mark coordinates' option ?
     - only use coordinates (internally)
-    - nicer timing/logging/messaging interface
+    - nicer logging/messaging interface
+	- create 'test' type generator to handle testing (boooring)
  * */
 
 namespace FLTTopoContour

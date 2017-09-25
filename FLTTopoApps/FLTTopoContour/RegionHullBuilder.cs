@@ -12,11 +12,46 @@ namespace FLTTopoContour
 	// - find a less awkward name?
 	// - discover/handle edge cases e.g. single point regions, single ROW regions, single point spans
 	// - consider optimization of points as they are added (no duplicate points, minimum delta, etc.)
-	// - 'double' bounded regions, specifically those that border edge of rect
+	// - region bounds that are added twice, where two regions meet (happens with those at edge of rect)
 	class RegionHullBuilder
 	{
+		// ---- points ----
+		private List<Tuple<int,int>> _pointsList = new List<Tuple<int,int>>();
+
 		// --------------------------------------------------------------
-		public static List<Tuple<int,int>> getListOfRegionEdgeCoords(FLTDataRegionalizer.Region region)
+		private void addPoint(Tuple<int,int> pointToAdd)
+		{
+			// todo: point rejection/optimization logic
+			_pointsList.Add(pointToAdd);
+		}
+
+		// --------------------------------------------------------------
+		public void Reset()
+		{
+			_pointsList.Clear();
+		}
+
+		// --------------------------------------------------------------
+		private Boolean isRegionIgnored(FLTDataRegionalizer.Region region)
+		{
+			Boolean ignored = false;
+
+			if (region.spanList.Count == 1)
+			{
+				// single span (and thus row) region
+				ignored = true;
+			}
+			else if (region.minCol == region.maxCol)
+			{
+				// single column region
+				ignored = true;
+			}
+
+			return ignored;
+		}
+
+		// --------------------------------------------------------------
+		public List<Tuple<int,int>> getListOfRegionEdgeCoords(FLTDataRegionalizer.Region region)
 		{
 			// Notes: 
 			// - As regions are taken from data points arranged like pixels on a screen, direction labels are relative to a coordinate
@@ -24,12 +59,18 @@ namespace FLTTopoContour
 			// - Algorithm starts at the top left (i.e. northwestern) most point in the region, and crawls around the region in a
 			//   counter-clockwise manner.
 
+			// test rejection cases
+			if (isRegionIgnored(region))
+			{
+				return new List<Tuple<int,int>>();
+			}
+
 			// start at left edge of left most span on minimum row (which region helpfully already knows)
 			var startSpan = region.minRowMinColSpan;
 
 			var currentSpan = startSpan;
 
-			var pointsList = new List<Tuple<int,int>>();
+			//var pointsList = new List<Tuple<int,int>>();
 
 			Tuple<int,int> currentPoint = null;
 
@@ -45,13 +86,13 @@ namespace FLTTopoContour
 			{
 				//Console.WriteLine("loop current span id : " + currentSpan.Id + " traveling " + (currentRowTravelDirection > 0 ? "down" : "up"));
 
-				if (currentRowTravelDirection == DOWN)
+				if (DOWN == currentRowTravelDirection)
 				{
 					// traveling down
 					// get point from LEFT end of current span because travel is CCW around the region, so if traveling down
 					// must be going down left side
 					currentPoint = new Tuple<int,int>(currentSpan.start, currentSpan.row);
-					pointsList.Add(currentPoint);
+					addPoint(currentPoint);
 
 					// If there are no more spans to follow downward, start going up.
 					if (false == currentSpan.hasSpansBelow)
@@ -81,10 +122,10 @@ namespace FLTTopoContour
 								// traverse the bottom of the 'bowl'
 								// step to point below left end of current span...
 								currentPoint = new Tuple<int,int>(currentSpan.start, currentSpan.row + 1);
-								pointsList.Add(currentPoint);
+								addPoint(currentPoint);
 								// step over to point on span below that is beneath left sibling's end...
 								currentPoint = new Tuple<int,int>(currentSpan.spanLeft.end, currentSpan.row + 1);
-								pointsList.Add(currentPoint);
+								addPoint(currentPoint);
 								// set currentSpan to left sibling, and begin upward traveling from there
 								currentSpan = currentSpan.spanLeft;
 								currentRowTravelDirection = UP;
@@ -105,7 +146,7 @@ namespace FLTTopoContour
 					// get point from RIGHT end of current span because travel is CCW around the region, so if traveling up
 					// must be going up right side
 					currentPoint = new Tuple<int,int>(currentSpan.end, currentSpan.row);
-					pointsList.Add(currentPoint);
+					addPoint(currentPoint);
 
 					// If there are no more spans to follow upward, start going down again (from same span).
 					if (false == currentSpan.hasSpansAbove)
@@ -134,10 +175,10 @@ namespace FLTTopoContour
 							{
 								// step to point above right end of current...
 								currentPoint = new Tuple<int,int>(currentSpan.end, currentSpan.row - 1);
-								pointsList.Add(currentPoint);
+								addPoint(currentPoint);
 								// step over to point on span above that is over right sibling's start...
 								currentPoint = new Tuple<int,int>(currentSpan.spanRight.start, currentSpan.row - 1);
-								pointsList.Add(currentPoint);
+								addPoint(currentPoint);
 								// set currentSpan to right sibling and begin downward travel from there
 								currentSpan = currentSpan.spanRight;
 								currentRowTravelDirection = DOWN;
@@ -161,12 +202,12 @@ namespace FLTTopoContour
 				if (currentSpan == startSpan)
 				{
 					currentPoint = new Tuple<int,int>(currentSpan.end, currentSpan.row);
-					pointsList.Add(currentPoint);
+					addPoint(currentPoint);
 					done = true;
 				}
 			}	// end while !done
 
-			return pointsList;
+			return _pointsList;
 		}
 	}
 }

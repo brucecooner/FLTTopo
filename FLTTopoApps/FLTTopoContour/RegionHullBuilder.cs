@@ -18,11 +18,54 @@ namespace FLTTopoContour
 		// ---- points ----
 		private List<Tuple<int,int>> _pointsList = new List<Tuple<int,int>>();
 
+		Tuple<int,int>		_lastPointAdded = null;
+		Tuple<int,int>		_lastPointRejected = null;
+
+		// --------------------------------------------------------------
+		private double Delta( Tuple<int,int> point1, Tuple<int,int> point2)
+		{
+			double returnDelta = 0.0f;
+
+            float delta1 = point2.Item1 - point1.Item1;
+            float delta2 = point2.Item2 - point1.Item2;
+
+            returnDelta = Math.Abs( Math.Sqrt( (delta1*delta1) + (delta2 * delta2)) );
+
+			return returnDelta;
+		}
+
 		// --------------------------------------------------------------
 		private void addPoint(Tuple<int,int> pointToAdd)
 		{
 			// todo: point rejection/optimization logic
-			_pointsList.Add(pointToAdd);
+
+			Boolean addPoint = true;
+
+			const double minimumDistanceBetweenPoints = 3.0;
+
+			if (_pointsList.Count > 1)
+			{
+				// don't start rejecting points until there's already one
+
+				// distance check, have to go minimum distance since last added point
+				var deltaToLastAddedPoint = Delta(pointToAdd, _lastPointAdded);
+
+				if (deltaToLastAddedPoint <= minimumDistanceBetweenPoints)
+				{
+					addPoint = false;
+				}
+			}
+
+			if (addPoint)
+			{
+				_pointsList.Add(pointToAdd);
+
+				_lastPointAdded = pointToAdd;
+			}
+			else
+			{
+				_lastPointRejected = pointToAdd;
+			}
 		}
 
 		// --------------------------------------------------------------

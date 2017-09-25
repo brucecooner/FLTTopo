@@ -124,6 +124,8 @@ namespace FLTTopoContour
 					var hullBuilder = new RegionHullBuilder();
 
 					pointsListsArray[regionIndex] = hullBuilder.getListOfRegionEdgeCoords(regionsList[regionIndex]);
+
+					totalPoints += pointsListsArray[regionIndex].Count;
 				}
 				else
 				{

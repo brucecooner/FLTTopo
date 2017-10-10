@@ -109,8 +109,7 @@ namespace FLTTopoContour
 			{
 				Boolean includeCurrentRegion = true;
 
-				if (		isMinimumRegionDataPointsSpecified 
-						&&	(regionsList[regionIndex].totalDataPoints <= _minimumRegionDataPoints))
+				if ( regionsList[regionIndex].totalDataPoints <= _minimumRegionDataPoints )
 				{
 					includeCurrentRegion = false;
 				}

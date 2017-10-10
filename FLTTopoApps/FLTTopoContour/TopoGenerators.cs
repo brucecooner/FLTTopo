@@ -30,12 +30,15 @@ namespace FLTTopoContour
         public abstract String GetName();
 
         // the topo data (NOTE : MAY BE CHANGED BY GENERATORS)
-        protected FLTTopoData _data = null;
+        protected FLTTopoData _data
+		{  get { return _parameters.Data; } }
 
-        protected int _contourHeights;
+        protected int _contourHeights
+		{ get { return _parameters.ContourHeights; } }
 
 		// in vector mode, minimum distance between points
-		protected double _minimumDistanceBetweenPoints = 0;
+		protected double _minimumDistanceBetweenPoints
+		{  get { return _parameters.MinimumPointDelta; } }
 
         // note : derived classes can declare their color names according to need
         protected Dictionary<String, Int32> _colorsDict = new Dictionary<String, Int32>( 10 );
@@ -104,11 +107,12 @@ namespace FLTTopoContour
             public Boolean OutputSVGFormat
             { get; set; }
 			// note that this should be in terms of data points, not meters
-			// or should it? TODO: translate this to meters
-			// god, was I drunk when I created this shitty name? TODO: better name
-			public double MinimumVectorOutputPointDelta
+			public double MinimumPointDelta
 			{ get; set; }
         };
+
+		// ---- operating parameters ----
+		private GeneratorSetupData _parameters;
 
         // ---- factory function ----
         public static TopoMapGenerator getGenerator( GeneratorSetupData setupData )
@@ -143,16 +147,16 @@ namespace FLTTopoContour
         }
 
         // ---- output file(s) ----
-        protected String _outputFilename;
+        protected String _outputFilename
+		{ get { return _parameters.OutputFilename; } }
 
         // ---- minimum region size ----
-		const int DEFAULT_MINIMUM_REGION_DATA_POINTS = 0;
-        protected int _minimumRegionDataPoints = DEFAULT_MINIMUM_REGION_DATA_POINTS;
-
-		protected Boolean isMinimumRegionDataPointsSpecified { get { return _minimumRegionDataPoints != DEFAULT_MINIMUM_REGION_DATA_POINTS; } }
+        protected int _minimumRegionDataPoints
+		{ get { return _parameters.MinimumRegionDataPoints; } }
 
 		// ---- output in svg ----
-		protected Boolean _svgFormat = false;
+		protected Boolean _svgFormat
+		{  get { return _parameters.OutputSVGFormat; } }
 
         // ---- rect extents ----
         // TODO : consider changing this to use lat/long instead
@@ -180,6 +184,7 @@ namespace FLTTopoContour
         }
 
         // ---- image size ----
+		// these are calculated after construction
         protected int _imageWidth
         { get; set; }
 
@@ -428,13 +433,7 @@ namespace FLTTopoContour
         // note : as the generators are pixel focused, we'll only work with indices into the topo data (for now)
         public TopoMapGenerator( GeneratorSetupData setupData )
         {
-            _data = setupData.Data;
-
-            _contourHeights = setupData.ContourHeights;
-
-			_minimumDistanceBetweenPoints = setupData.MinimumVectorOutputPointDelta;
-
-            _outputFilename = setupData.OutputFilename;
+			_parameters = setupData;
 
             if ( setupData.RectIndices.Length < 4 )
             {
@@ -447,10 +446,6 @@ namespace FLTTopoContour
 
             _imageWidth = setupData.ImageWidth;
             _imageHeight = setupData.ImageHeight;
-
-            _minimumRegionDataPoints = setupData.MinimumRegionDataPoints;
-
-			_svgFormat = setupData.OutputSVGFormat;
 
             addTimingHandler = null;
         }

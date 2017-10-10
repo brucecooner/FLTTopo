@@ -1365,7 +1365,7 @@ namespace FLTTopoContour
                     setupData.MinimumRegionDataPoints = _minimumRegionDataPoints;
                     setupData.OutputSVGFormat = _outputSVGFormat;
 					// convert to data points
-					setupData.MinimumVectorOutputPointDelta = _minimumVectorOutputPointDelta / _topoData.MetersPerCell();
+					setupData.MinimumPointDelta = _minimumVectorOutputPointDelta / _topoData.MetersPerCell();
 
                     TopoMapGenerator generator = TopoMapGenerator.getGenerator( setupData );
                     generator.DetermineImageDimensions();

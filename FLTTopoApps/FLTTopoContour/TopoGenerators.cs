@@ -10,6 +10,7 @@ using FLTDataLib;
 
 // classes which (via common interface) generate topo map data in various forms
 // Note : doesn't do any validation on input parameters, assumes they have been validated against the data
+// TODO: instead of copying all the setup data into individual fields in this, just keep a reference to the setup data
 namespace FLTTopoContour
 {
     // base class
@@ -32,6 +33,9 @@ namespace FLTTopoContour
         protected FLTTopoData _data = null;
 
         protected int _contourHeights;
+
+		// in vector mode, minimum distance between points
+		protected double _minimumDistanceBetweenPoints = 0;
 
         // note : derived classes can declare their color names according to need
         protected Dictionary<String, Int32> _colorsDict = new Dictionary<String, Int32>( 10 );
@@ -99,6 +103,11 @@ namespace FLTTopoContour
             { get; set; }
             public Boolean OutputSVGFormat
             { get; set; }
+			// note that this should be in terms of data points, not meters
+			// or should it? TODO: translate this to meters
+			// god, was I drunk when I created this shitty name? TODO: better name
+			public double MinimumVectorOutputPointDelta
+			{ get; set; }
         };
 
         // ---- factory function ----
@@ -422,6 +431,8 @@ namespace FLTTopoContour
             _data = setupData.Data;
 
             _contourHeights = setupData.ContourHeights;
+
+			_minimumDistanceBetweenPoints = setupData.MinimumVectorOutputPointDelta;
 
             _outputFilename = setupData.OutputFilename;
 
@@ -1151,7 +1162,7 @@ namespace FLTTopoContour
                 // distance each pixel represents in specified height
                 double metersPerPixel = elevationRange / _imageHeight;
 
-                double sliceWidthDegrees = Vector.Ops.Length( sampleSlice.Start, sampleSlice.End );
+                double sliceWidthDegrees = Vector.Double.Length( sampleSlice.Start, sampleSlice.End );
                 double sliceWidthMeters = sliceWidthDegrees * Constants.Distance.MetersPerDegree;
 
                 _imageWidth = Convert.ToInt32( sliceWidthMeters / metersPerPixel );
@@ -1161,7 +1172,7 @@ namespace FLTTopoContour
             {
                 // width was specified, calculate height
                 // determine scale factor on width (i.e. what is the width of a pixel at this size)
-                double sliceWidthDegrees = Vector.Ops.Length( sampleSlice.Start, sampleSlice.End );
+                double sliceWidthDegrees = Vector.Double.Length( sampleSlice.Start, sampleSlice.End );
                 double pixelsPerDegree = _imageWidth / sliceWidthDegrees;
                 double pixelsPerMeter = pixelsPerDegree * Constants.Distance.DegreesPerMeter;
 
@@ -1229,10 +1240,10 @@ namespace FLTTopoContour
             stopwatch.Start();
 
             // determine how many slices will be generated
-            var startEndDelta = Vector.Ops.Delta( start, end );
+            var startEndDelta = Vector.Double.Delta( start, end );
 
             // length of delta
-            double startEndDeltaDegrees = Vector.Ops.Length( startEndDelta );
+            double startEndDeltaDegrees = Vector.Double.Length( startEndDelta );
 
             // note : add 1 because the division determines the count of spaces -between- slices
             int numSlices = (int)(startEndDeltaDegrees / degreesBetweenSlices) + 1;
@@ -1240,10 +1251,10 @@ namespace FLTTopoContour
             var slices = new List<SliceDescriptor>( numSlices );
 
             // need normalized length start->end delta
-            var normalizedStartEndDelta = Vector.Ops.Normalize( startEndDelta );
+            var normalizedStartEndDelta = Vector.Double.Normalize( startEndDelta );
 
             // now need coincident vector, but sized to degrees step
-            var deltaStep = Vector.Ops.Scale( normalizedStartEndDelta, degreesBetweenSlices );
+            var deltaStep = Vector.Double.Scale( normalizedStartEndDelta, degreesBetweenSlices );
 
             // starting point of current slice
             double currentStartLatitude = start.Item1;
@@ -1328,13 +1339,13 @@ namespace FLTTopoContour
         {
             // -- pre calcs --
             // how far to step in topo coordinate space per image pixel
-            var sliceDelta = Vector.Ops.Delta( slices[0].Start, slices[0].End );
+            var sliceDelta = Vector.Double.Delta( slices[0].Start, slices[0].End );
 
-            double sliceDegreesWidth = Vector.Ops.Length( sliceDelta );
+            double sliceDegreesWidth = Vector.Double.Length( sliceDelta );
             // scaling imgWidth over sliceDegreesWidth
-            var sliceDeltaNormalized = Vector.Ops.Normalize( sliceDelta );
+            var sliceDeltaNormalized = Vector.Double.Normalize( sliceDelta );
 
-            _coordinateStepPerImagePixel = Vector.Ops.Scale( sliceDeltaNormalized, sliceDegreesWidth / _imageWidth );
+            _coordinateStepPerImagePixel = Vector.Double.Scale( sliceDeltaNormalized, sliceDegreesWidth / _imageWidth );
 
             foreach( SliceDescriptor currentSliceDesc in slices )
             {

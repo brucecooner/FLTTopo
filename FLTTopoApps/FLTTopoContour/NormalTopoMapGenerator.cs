@@ -107,8 +107,6 @@ namespace FLTTopoContour
 
 			var pointsListsArray = new List<Tuple<int,int>>[regionsList.Count];
 
-			// parallelization only makes a thousandth of a second difference here, possibly because there's very little math involved
-#if TRUE
 			Parallel.For(0, regionsList.Count, regionIndex =>
 			{
 				Boolean includeCurrentRegion = true;
@@ -121,9 +119,16 @@ namespace FLTTopoContour
 
 				if (includeCurrentRegion)
 				{
-					var hullBuilder = new RegionHullBuilder();
+					// construct point pipeline for this region
+					// hullBuilder -> pathFilter -> pointsListArray[regionIndex]
+					pointsListsArray[regionIndex] = new List<Tuple<int,int>>();
 
-					pointsListsArray[regionIndex] = hullBuilder.getListOfRegionEdgeCoords(regionsList[regionIndex]);
+					var pathFilter = new PathFilter(	new PathFilter.Parameters{ minimumDistanceBetweenPoints = _minimumDistanceBetweenPoints },
+														(point) => { pointsListsArray[regionIndex].Add(point); } );
+
+					var hullBuilder = new RegionHullGenerator( (point) => { pathFilter.handlePoint(point); } );
+					
+					hullBuilder.generate(regionsList[regionIndex]);
 
 					totalPoints += pointsListsArray[regionIndex].Count;
 				}
@@ -132,37 +137,15 @@ namespace FLTTopoContour
 					pointsListsArray[ regionIndex ] = new List<Tuple<int,int>>();
 				}
 			});
-#else
-			// WARNING : non-maintained code
-			var hullBuilder = new RegionHullBuilder();
 
-			for (int regionIndex = 0; regionIndex < regionsList.Count; regionIndex += 1)
-			{
-				Boolean includeCurrentRegion = true;
-
-				if (		isMinimumRegionDataPointsSpecified 
-						&&	(regionsList[regionIndex].totalDataPoints <= _minimumRegionDataPoints))
-				{
-					includeCurrentRegion = false;
-				}
-
-				if (includeCurrentRegion)
-				{
-					hullBuilder.Reset();
-					pointsListsArray[ regionIndex ] = hullBuilder.getListOfRegionEdgeCoords(regionsList[regionIndex]);
-				}	
-				else
-				{
-					pointsListsArray[ regionIndex ] = new List<Tuple<int,int>>();
-				}
-			}
-#endif
 			timer.Stop();
 			addTiming("edge discovery", timer.ElapsedMilliseconds);
 
 			Console.WriteLine("Generated total of " + totalPoints + " points.");
 
 			Console.WriteLine("Building svg");
+
+			// ---- optimize paths ----
 
 
 			// ---- svg ----
@@ -232,9 +215,10 @@ namespace FLTTopoContour
 			}
 			else
 			{
+				/*
 				var hullBuilder = new RegionHullBuilder();
 
-				var pointsList = hullBuilder.getListOfRegionEdgeCoords(regionList[0]);
+				var pointsList = hullBuilder.generate(regionList[0]);
 
 				if (pointsList.Count == 0)
 				{
@@ -244,6 +228,7 @@ namespace FLTTopoContour
 				{
 					Console.WriteLine("FAILED (unexpected number of regions ("+ pointsList.Count +") in test data");
 				}
+				*/
 			}
 		}
 
@@ -284,9 +269,10 @@ namespace FLTTopoContour
 			}
 			else
 			{
+				/*
 				var hullBuilder = new RegionHullBuilder();
 
-				var pointsList = hullBuilder.getListOfRegionEdgeCoords(regionList[0]);
+				var pointsList = hullBuilder.generate(regionList[0]);
 
 				if (pointsList.Count == 0)
 				{
@@ -296,6 +282,7 @@ namespace FLTTopoContour
 				{
 					Console.WriteLine("FAILED (unexpected number of regions ("+ pointsList.Count +") in test data");
 				}
+				*/
 			}
 		}
 

@@ -6,72 +6,36 @@ using System.Threading.Tasks;
 
 namespace FLTTopoContour
 {
-	// "Crawls" around the outside of a specified Region (see:FLTDataRegionalizer), composing a list of points as it travels.
+	// "Crawls" around the outside of a specified Region (see:FLTDataRegionalizer), producing a list of points as it travels, 
+	// and sending them to a handler method.
 	// This should represent the minimally enclosing 'hull' around the region (ignoring any of its interior voids).
 	// TODO:
-	// - find a less awkward name?
 	// - discover/handle edge cases e.g. single point regions, single ROW regions, single point spans
 	// - consider optimization of points as they are added (no duplicate points, minimum delta, etc.)
-	// - region bounds that are added twice, where two regions meet (happens with those at edge of rect)
-	class RegionHullBuilder
+	// - detect region bounds that are added twice, where two regions meet (happens with those at edge of rect), tricky 
+	class RegionHullGenerator
 	{
-		// ---- points ----
-		private List<Tuple<int,int>> _pointsList = new List<Tuple<int,int>>();
+        // function delegate to specify callback for points as they are added
+        public delegate void addPointDelegate( Tuple<int,int> point );
 
-		Tuple<int,int>		_lastPointAdded = null;
-		Tuple<int,int>		_lastPointRejected = null;
+		// callback when a point is added to set
+		private addPointDelegate _addPointHandler = null;
 
 		// --------------------------------------------------------------
-		private double Delta( Tuple<int,int> point1, Tuple<int,int> point2)
+		public RegionHullGenerator( addPointDelegate addPointHandler )
 		{
-			double returnDelta = 0.0f;
-
-            float delta1 = point2.Item1 - point1.Item1;
-            float delta2 = point2.Item2 - point1.Item2;
-
-            returnDelta = Math.Abs( Math.Sqrt( (delta1*delta1) + (delta2 * delta2)) );
-
-			return returnDelta;
+			_addPointHandler = addPointHandler;
 		}
 
 		// --------------------------------------------------------------
 		private void addPoint(Tuple<int,int> pointToAdd)
 		{
-			// todo: point rejection/optimization logic
-
-			Boolean addPoint = true;
-
-			const double minimumDistanceBetweenPoints = 3.0;
-
-			if (_pointsList.Count > 1)
-			{
-				// don't start rejecting points until there's already one
-
-				// distance check, have to go minimum distance since last added point
-				var deltaToLastAddedPoint = Delta(pointToAdd, _lastPointAdded);
-
-				if (deltaToLastAddedPoint <= minimumDistanceBetweenPoints)
-				{
-					addPoint = false;
-				}
-			}
-
-			if (addPoint)
-			{
-				_pointsList.Add(pointToAdd);
-
-				_lastPointAdded = pointToAdd;
-			}
-			else
-			{
-				_lastPointRejected = pointToAdd;
-			}
+			_addPointHandler(pointToAdd);
 		}
 
 		// --------------------------------------------------------------
 		public void Reset()
 		{
-			_pointsList.Clear();
 		}
 
 		// --------------------------------------------------------------
@@ -94,7 +58,7 @@ namespace FLTTopoContour
 		}
 
 		// --------------------------------------------------------------
-		public List<Tuple<int,int>> getListOfRegionEdgeCoords(FLTDataRegionalizer.Region region)
+		public void generate(FLTDataRegionalizer.Region region)
 		{
 			// Notes: 
 			// - As regions are taken from data points arranged like pixels on a screen, direction labels are relative to a coordinate
@@ -102,18 +66,21 @@ namespace FLTTopoContour
 			// - Algorithm starts at the top left (i.e. northwestern) most point in the region, and crawls around the region in a
 			//   counter-clockwise manner.
 
+			if (null == _addPointHandler)
+			{
+				throw new System.InvalidOperationException("RegionHullGenerator: addPointHandler has not been set");
+			}
+
 			// test rejection cases
 			if (isRegionIgnored(region))
 			{
-				return new List<Tuple<int,int>>();
+				return;
 			}
 
 			// start at left edge of left most span on minimum row (which region helpfully already knows)
 			var startSpan = region.minRowMinColSpan;
 
 			var currentSpan = startSpan;
-
-			//var pointsList = new List<Tuple<int,int>>();
 
 			Tuple<int,int> currentPoint = null;
 
@@ -249,8 +216,6 @@ namespace FLTTopoContour
 					done = true;
 				}
 			}	// end while !done
-
-			return _pointsList;
 		}
 	}
 }

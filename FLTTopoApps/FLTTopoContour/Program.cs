@@ -72,7 +72,8 @@ namespace FLTTopoContour
             AppendCoords,       // append coordinates to vertical slice files (maybe others?)
             ImageHeightScale,   // vertical scale factor for vertical slice image files
             MinRegionPoints,    // regions of this many data points or smaller in quantized data are 'flattened' to next lower height
-            SVG                 // produce output in svg format
+            SVG,                // produce output in svg format
+			MinPointDelta,		// minimum distance between points when creating vector outlines
         };
 
         // TODO : settle on a capitalization scheme here!!!
@@ -138,14 +139,14 @@ namespace FLTTopoContour
 
         // ---- SETTINGS ----
         static String inputFileBaseName = "";
-        static String outputFileName = "";
+        static String _outputFileName = "";
 
         static Boolean helpRequested = false;
 
         // type of map to produce
-        static TopoMapGenerator.MapType outputMapType = DefaultMapType;
+        static TopoMapGenerator.MapType _outputMapType = DefaultMapType;
 
-        static Int32 contourHeights = DefaultContourHeights;
+        static Int32 _contourHeights = DefaultContourHeights;
 
         static  Boolean reportTimings = false;
 
@@ -175,11 +176,14 @@ namespace FLTTopoContour
         static Int32 rectBottomIndex;
 
         // desired image size
-        static Int32 imageWidth = TopoMapGenerator.ImageDimensionNotSpecifiedValue;
-        static Int32 imageHeight = TopoMapGenerator.ImageDimensionNotSpecifiedValue;
+        static Int32 _imageWidth = TopoMapGenerator.ImageDimensionNotSpecifiedValue;
+        static Int32 _imageHeight = TopoMapGenerator.ImageDimensionNotSpecifiedValue;
 
         // minimum region size (zero = use all regions regardless of size)
-        static int minimumRegionDataPoints = 0;
+        static int _minimumRegionDataPoints = 0;
+
+		// minimum allowed distance between vector output points (zero = no minimum)
+		static double _minimumVectorOutputPointDelta = 0;
 
         // list of single line operating notes
         static List<String> programNotes = null;
@@ -224,7 +228,7 @@ namespace FLTTopoContour
 
             if ( input.Length > 0 )
             {
-                outputFileName = input;
+                _outputFileName = input;
                 parsed = true;
             }
             else
@@ -241,7 +245,7 @@ namespace FLTTopoContour
         {
             Boolean parsed = false;
 
-            parsed = Int32.TryParse( input, out contourHeights );
+            parsed = Int32.TryParse( input, out _contourHeights );
 
             if ( false == parsed )
             {
@@ -249,7 +253,7 @@ namespace FLTTopoContour
             }
             else
             {
-                if ( contourHeights < MinimumContourHeights )
+                if ( _contourHeights < MinimumContourHeights )
                 {
                     parsed = false;
                     parseErrorMessage = "Minimum allowed contour height is " + MinimumContourHeights;
@@ -325,7 +329,7 @@ namespace FLTTopoContour
             {
                 if ( input.Equals( currentModeSpec.Value.Specifier ) )
                 {
-                    outputMapType = currentModeSpec.Key;
+                    _outputMapType = currentModeSpec.Key;
                     parsed = true;
                 }
             }
@@ -472,7 +476,7 @@ namespace FLTTopoContour
 
             if ( parsed )
             {
-                imageWidth = width;
+                _imageWidth = width;
             }
             else
             {
@@ -493,7 +497,7 @@ namespace FLTTopoContour
 
             if ( parsed )
             {
-                imageHeight = height;
+                _imageHeight = height;
             }
             else
             {
@@ -557,7 +561,7 @@ namespace FLTTopoContour
                 }
                 else
                 {
-                    minimumRegionDataPoints = minPoints;
+                    _minimumRegionDataPoints = minPoints;
                 }
             }
             else
@@ -575,7 +579,36 @@ namespace FLTTopoContour
             return true;
         }
 
-        // -------------------------------------------------------------------- 
+		// -----------------------------------------------------------------------
+		static private bool parseMinimumPointDelta( String input, ref String parseErrorString )
+		{
+            bool parsed = true;
+
+            int minDistance;
+
+            parsed = int.TryParse(input, out minDistance);
+
+            if (parsed)
+            {
+                if (minDistance <= 0)
+                {
+                    parseErrorString = "Minimum distance must be greater than zero.";
+                    parsed = false;
+                }
+                else
+                {
+                    _minimumVectorOutputPointDelta = minDistance;
+                }
+            }
+            else
+            {
+                parseErrorString = "Unable to get minimum distance from '" + input + "'";
+            }
+
+            return parsed;
+		}
+
+		// -------------------------------------------------------------------- 
         static private void initOptionSpecifiers()
         {
             // -- map type options --
@@ -724,9 +757,15 @@ namespace FLTTopoContour
             optionTypeToSpecDict.Add(OptionType.MinRegionPoints, new OptionSpecifier{
                 Specifier = "minregionpoints",
                 Description = "Minimum Data Points",
-                HelpText = "<num points> exclude regions of this many data points or fewer (in quantized source data) from output",
+                HelpText = "<integer> exclude regions of this many data points or fewer (in quantized source data) from output",
                 ParseDelegate = parseMinumRegionPoints,
                 ExpectsValue = true });
+			optionTypeToSpecDict.Add(OptionType.MinPointDelta, new OptionSpecifier{
+				Specifier = "minpointdelta",
+				Description = "Minimum Point Delta",
+				HelpText = "<meters> minimum distance between vector output points",
+				ParseDelegate = parseMinimumPointDelta,
+				ExpectsValue = true });
         }
 
         // --------------------------------------------------------------------
@@ -842,9 +881,9 @@ namespace FLTTopoContour
             }
 
             // default output file name to input file name plus something extra
-            if ( 0 == outputFileName.Length )
+            if ( 0 == _outputFileName.Length )
             {
-                outputFileName = inputFileBaseName + DefaultOutputFileSuffix;
+                _outputFileName = inputFileBaseName + DefaultOutputFileSuffix;
             }
 
             return parsed;
@@ -881,8 +920,8 @@ namespace FLTTopoContour
         // -------------------------------------------------------------------------------------
         static private void echoImageSize()
         {
-            Console.WriteLine( "Image width: " + (TopoMapGenerator.ImageDimensionSpecified( imageWidth ) ? imageWidth.ToString() : "not specified" ) );
-            Console.WriteLine( "Image height: " + (TopoMapGenerator.ImageDimensionSpecified( imageHeight ) ? imageHeight.ToString() : "not specified" ) );
+            Console.WriteLine( "Image width: " + (TopoMapGenerator.ImageDimensionSpecified( _imageWidth ) ? _imageWidth.ToString() : "not specified" ) );
+            Console.WriteLine( "Image height: " + (TopoMapGenerator.ImageDimensionSpecified( _imageHeight ) ? _imageHeight.ToString() : "not specified" ) );
             Console.WriteLine( "Image height scale: " + imageHeightScale );
         }
 
@@ -900,15 +939,21 @@ namespace FLTTopoContour
             }
             else
             {
-                Console.WriteLine(optionTypeToSpecDict[OptionType.OutputFile].Description + " : " + outputFileName);
-                Console.WriteLine(optionTypeToSpecDict[OptionType.Mode].Description + " : " + mapTypeToSpecifierDict[outputMapType].Description);
-                Console.WriteLine(optionTypeToSpecDict[OptionType.ContourHeights].Description + " : " + contourHeights);
+                Console.WriteLine(optionTypeToSpecDict[OptionType.OutputFile].Description + " : " + _outputFileName);
+                Console.WriteLine(optionTypeToSpecDict[OptionType.Mode].Description + " : " + mapTypeToSpecifierDict[_outputMapType].Description);
+                Console.WriteLine(optionTypeToSpecDict[OptionType.ContourHeights].Description + " : " + _contourHeights);
                 Console.WriteLine(optionTypeToSpecDict[OptionType.ReportTimings].Description + " : " + (reportTimings ? "yes" : "no"));
                 Console.WriteLine(optionTypeToSpecDict[OptionType.AppendCoords].Description + " : " + (_appendCoordinatesToFilenames ? "yes" : "no"));
 				Console.WriteLine(optionTypeToSpecDict[OptionType.SVG].Description + " : " + (_outputSVGFormat ? "yes" : "no"));
-                if (minimumRegionDataPoints > 0)
+				// vector related options
+				if (_outputSVGFormat)
+				{
+					Console.WriteLine(optionTypeToSpecDict[OptionType.MinPointDelta].Description + " : " + _minimumVectorOutputPointDelta);
+				}
+
+                if (_minimumRegionDataPoints > 0)
                 {
-                    Console.WriteLine(optionTypeToSpecDict[OptionType.MinRegionPoints].Description + " : " + minimumRegionDataPoints);
+                    Console.WriteLine(optionTypeToSpecDict[OptionType.MinRegionPoints].Description + " : " + _minimumRegionDataPoints);
                 }
 
                 // only report colors if changed from default
@@ -1054,19 +1099,19 @@ namespace FLTTopoContour
         {
             bool validated = true;
 
-            if ( TopoMapGenerator.ImageDimensionSpecified( imageWidth ) )
+            if ( TopoMapGenerator.ImageDimensionSpecified( _imageWidth ) )
             {
                 // validate
-                if ( imageWidth <= 0 )
+                if ( _imageWidth <= 0 )
                 {
                     Console.WriteLine( "specified " + optionTypeToSpecDict[ OptionType.ImageWidth].Description + ImageDimensionLTEZeroErrorMessage );
                     validated = false;
                 }
             }
 
-            if ( TopoMapGenerator.ImageDimensionSpecified( imageHeight ) )
+            if ( TopoMapGenerator.ImageDimensionSpecified( _imageHeight ) )
             {
-                if ( imageHeight <= 0 )
+                if ( _imageHeight <= 0 )
                 {
                     Console.WriteLine( "specified " + optionTypeToSpecDict[ OptionType.ImageHeight].Description + ImageDimensionLTEZeroErrorMessage );
                     validated = false;
@@ -1196,7 +1241,7 @@ namespace FLTTopoContour
             initProgramNotes();
             initColorsDictionary();
 
-            FLTDataLib.FLTTopoData topoData = new FLTDataLib.FLTTopoData();
+            FLTDataLib.FLTTopoData _topoData = new FLTDataLib.FLTTopoData();
 
             System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
 
@@ -1237,7 +1282,7 @@ namespace FLTTopoContour
                 // ---- read descriptor -----
                 try
                 {
-                    readDescriptor( topoData, inputFileBaseName );
+                    readDescriptor( _topoData, inputFileBaseName );
                 }
                 catch 
                 { 
@@ -1247,7 +1292,7 @@ namespace FLTTopoContour
                 // ---- validate rect options ----
                 try
                 {
-                    Boolean rectValidated = handleRectOptions(topoData);
+                    Boolean rectValidated = handleRectOptions(_topoData);
 
                     if (false == rectValidated)
                     {
@@ -1259,7 +1304,7 @@ namespace FLTTopoContour
                 // ---- validate image size options ----
                 try
                 {
-                    Boolean imageSizeValidated = validateImageSizeOptions(topoData);
+                    Boolean imageSizeValidated = validateImageSizeOptions(_topoData);
 
                     if (false == imageSizeValidated)
                     {
@@ -1272,7 +1317,7 @@ namespace FLTTopoContour
 				{
 					if ( _outputSVGFormat )
 					{
-						if (false == TopoMapGenerator.mapTypeSupportsSVG( outputMapType ))
+						if (false == TopoMapGenerator.mapTypeSupportsSVG( _outputMapType ))
 						{
 							Console.WriteLine( OutputMapTypeDoesNotSupportSVGErrorMessage );
 							
@@ -1288,36 +1333,38 @@ namespace FLTTopoContour
                 // ---- read data ----
                 try
                 {
-                    readData(topoData, inputFileBaseName);
+                    readData(_topoData, inputFileBaseName);
                 }
                 catch { return ReturnErrorCode; }
 
                 // ---- process ----
                 if ( dataReportOnly )
                 {
-                    dataReport( topoData );
+                    dataReport( _topoData );
                 }
                 else
                 {
                     // pack extents into array
-                    var rectExtents = new int[4];
-                    rectExtents[ TopoMapGenerator.RectLeftIndex ] = rectLeftIndex;
-                    rectExtents[ TopoMapGenerator.RectTopIndex ] = rectTopIndex;
-                    rectExtents[ TopoMapGenerator.RectRightIndex ] = rectRightIndex;
-                    rectExtents[ TopoMapGenerator.RectBottomIndex ] = rectBottomIndex;
+                    var _rectExtents = new int[4];
+                    _rectExtents[ TopoMapGenerator.RectLeftIndex ] = rectLeftIndex;
+                    _rectExtents[ TopoMapGenerator.RectTopIndex ] = rectTopIndex;
+                    _rectExtents[ TopoMapGenerator.RectRightIndex ] = rectRightIndex;
+                    _rectExtents[ TopoMapGenerator.RectBottomIndex ] = rectBottomIndex;
 
                     var setupData = new TopoMapGenerator.GeneratorSetupData();
-                    setupData.Type = outputMapType;
-                    setupData.ContourHeights = contourHeights;
-                    setupData.Data = topoData;
-                    setupData.OutputFilename = outputFileName;
-                    setupData.RectIndices = rectExtents;
-                    setupData.ImageWidth = imageWidth;
-                    setupData.ImageHeight = imageHeight;
+                    setupData.Type = _outputMapType;
+                    setupData.ContourHeights = _contourHeights;
+                    setupData.Data = _topoData;
+                    setupData.OutputFilename = _outputFileName;
+                    setupData.RectIndices = _rectExtents;
+                    setupData.ImageWidth = _imageWidth;
+                    setupData.ImageHeight = _imageHeight;
                     setupData.AppendCoordinatesToFilenames = _appendCoordinatesToFilenames;
                     setupData.ImageHeightScale = imageHeightScale;
-                    setupData.MinimumRegionDataPoints = minimumRegionDataPoints;
+                    setupData.MinimumRegionDataPoints = _minimumRegionDataPoints;
                     setupData.OutputSVGFormat = _outputSVGFormat;
+					// convert to data points
+					setupData.MinimumVectorOutputPointDelta = _minimumVectorOutputPointDelta / _topoData.MetersPerCell();
 
                     TopoMapGenerator generator = TopoMapGenerator.getGenerator( setupData );
                     generator.DetermineImageDimensions();

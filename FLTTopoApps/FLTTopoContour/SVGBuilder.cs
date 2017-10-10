@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 
 namespace SVGBuilder
 {
+	// ==========================================================================================
     class Builder
     {
 		private long _width = 0;
@@ -15,6 +16,7 @@ namespace SVGBuilder
 
 		private long _XTranslate = 0;
 		private long _YTranslate = 0;
+
 
 		// --------------------------------------------
 		// constructor 
@@ -61,13 +63,11 @@ namespace SVGBuilder
 
 			Boolean first = true;
 
-			// TODO: try to foreach this
 			foreach (var currentPoint in path)
 			{
 				String prefix = first ? "M" : "L";
 				first = false;
 
-				//file.Write(prefix + currentPoint.Item1 + " " + currentPoint.Item2 + " ");
 				file.Write(prefix + (currentPoint.Item1 + _XTranslate) + " " + (currentPoint.Item2 + _YTranslate) + " ");
 			}
 

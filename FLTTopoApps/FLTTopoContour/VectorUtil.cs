@@ -6,7 +6,8 @@ using System.Threading.Tasks;
 
 namespace Vector
 {
-    class Ops
+	// ==================================================================================================
+    class Double
     {
         // -----------------------------------------------------------------------------------------------
         // delta
@@ -46,5 +47,26 @@ namespace Vector
         {
             return new Tuple<double,double>( source.Item1 * scale, source.Item2 * scale );
         }
-    }
+    } // end class Double
+
+	// ========================================================================================
+	class Int
+	{
+        // -----------------------------------------------------------------------------------------------
+        // scalar distance between start, end
+        public static double Length( Tuple<int,int> start, Tuple<int,int> end )
+        {
+            int delta1 = end.Item1 - start.Item1;
+            int delta2 = end.Item2 - start.Item2;
+
+            return System.Math.Abs( System.Math.Sqrt( (delta1*delta1) + (delta2 * delta2)) );
+        }
+
+        // -----------------------------------------------------------------------------------------------
+		public static Tuple<int,int> Delta( Tuple<int,int> start, Tuple<int,int> end)
+		{
+			return new Tuple<int,int>( end.Item1 - start.Item1, end.Item2 - start.Item2 );
+		}
+	}
 }
+

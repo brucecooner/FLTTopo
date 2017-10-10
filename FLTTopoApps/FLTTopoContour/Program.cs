@@ -74,7 +74,7 @@ namespace FLTTopoContour
             ImageHeightScale,   // vertical scale factor for vertical slice image files
             MinRegionPoints,    // regions of this many data points or smaller in quantized data are 'flattened' to next lower height
             SVG,                // produce output in svg format
-			MinPointDelta,		// minimum distance between points when creating vector outlines
+			MinPointDelta,		// minimum distance between points when creating vector outlines (specified in meters)
         };
 
         // TODO : settle on a capitalization scheme here!!!

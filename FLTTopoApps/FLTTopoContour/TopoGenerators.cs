@@ -10,7 +10,6 @@ using FLTDataLib;
 
 // classes which (via common interface) generate topo map data in various forms
 // Note : doesn't do any validation on input parameters, assumes they have been validated against the data
-// TODO: instead of copying all the setup data into individual fields in this, just keep a reference to the setup data
 namespace FLTTopoContour
 {
     // base class

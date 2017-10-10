@@ -7,9 +7,7 @@ using System.Threading.Tasks;
 using SVGBuilder;
 
 // TODO:
-// -optimize paths (define "optimize")
 // -detect existing outputfilename extension
-
 
 namespace FLTTopoContour
 {

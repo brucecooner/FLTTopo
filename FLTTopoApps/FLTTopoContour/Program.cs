@@ -39,6 +39,7 @@ using OptionUtils;
     - only use coordinates (internally)
     - nicer logging/messaging interface
 	- create 'test' type generator to handle testing (boooring)
+	- support svg output in all modes
  * */
 
 namespace FLTTopoContour

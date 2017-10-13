@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+// TODO: bezier/quadratic options for paths
 namespace SVGBuilder
 {
 	// ==========================================================================================
@@ -76,10 +77,10 @@ namespace SVGBuilder
 		}
 
         // -------------------------------------------------
-        public void TestMakingAFile(String filename)
+        public void CreateFile(String filename)
         {
 			using (System.IO.StreamWriter file =
-				new System.IO.StreamWriter(filename)) //(@"TestSVGFile.svg"))
+				new System.IO.StreamWriter(filename))
 			{
 				file.WriteLine("<svg version = \"1.1\"");
 				file.WriteLine("baseProfile = \"full\"");

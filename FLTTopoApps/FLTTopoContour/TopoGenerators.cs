@@ -39,6 +39,9 @@ namespace FLTTopoContour
 		protected double _minimumDistanceBetweenPoints
 		{  get { return _parameters.MinimumPointDelta; } }
 
+		protected double _maximumAngleDeltaRadians
+		{ get { return _parameters.MaximumAngleDeviationRadians; } }
+
         // note : derived classes can declare their color names according to need
         protected Dictionary<String, Int32> _colorsDict = new Dictionary<String, Int32>( 10 );
 
@@ -107,6 +110,8 @@ namespace FLTTopoContour
             { get; set; }
 			// note that this should be in terms of data points, not meters
 			public double MinimumPointDelta
+			{ get; set; }
+			public double MaximumAngleDeviationRadians
 			{ get; set; }
         };
 

@@ -75,6 +75,7 @@ namespace FLTTopoContour
             MinRegionPoints,    // regions of this many data points or smaller in quantized data are 'flattened' to next lower height
             SVG,                // produce output in svg format
 			MinPointDelta,		// minimum distance between points when creating vector outlines (specified in meters)
+			MaxAngleDelta,		// maximum angle deviation allowed when creating vector outlines (specified in degrees)
         };
 
         // TODO : settle on a capitalization scheme here!!!
@@ -185,6 +186,10 @@ namespace FLTTopoContour
 
 		// minimum allowed distance between vector output points (zero = no minimum)
 		static double _minimumVectorOutputPointDelta = 0;
+
+		// if path changes by this many degrees, add point regardless of distance criteria
+		// TODO: better name
+		static double _maximumAngleChange = 0;
 
         // list of single line operating notes
         static List<String> programNotes = null;
@@ -609,6 +614,40 @@ namespace FLTTopoContour
             return parsed;
 		}
 
+		// -------------------------------------------------------------------------
+		static private bool parseMaximumAngleDelta( String input, ref String parseErrorString )
+		{
+			bool parsed = true;
+
+            int maxAngle;
+
+            parsed = int.TryParse(input, out maxAngle);
+
+            if (parsed)
+            {
+                if (maxAngle <= 0)
+                {
+                    parseErrorString = "Maximum angle must be greater than zero.";
+                    parsed = false;
+                }
+                else if (maxAngle > 180)
+				{
+                    parseErrorString = "Maximum angle must be less than 180.";
+                    parsed = false;
+				}
+				else
+                {
+                    _maximumAngleChange = maxAngle;
+                }
+            }
+            else
+            {
+                parseErrorString = "Unable to get max angle from '" + input + "'";
+            }
+
+			return parsed;
+		}
+
 		// -------------------------------------------------------------------- 
         static private void initOptionSpecifiers()
         {
@@ -764,8 +803,14 @@ namespace FLTTopoContour
 			optionTypeToSpecDict.Add(OptionType.MinPointDelta, new OptionSpecifier{
 				Specifier = "minpointdelta",
 				Description = "Minimum Point Delta",
-				HelpText = "<meters> minimum distance between vector output points",
+				HelpText = "<meters> in svg mode, minimum distance between points",
 				ParseDelegate = parseMinimumPointDelta,
+				ExpectsValue = true });
+			optionTypeToSpecDict.Add(OptionType.MaxAngleDelta, new OptionSpecifier{
+				Specifier = "maxangledelta",
+				Description = "Maximum Angle Between Points",	//??? this makes no sense
+				HelpText = "<degrees> in svg mode, angles greater than this between points are always preserved",
+				ParseDelegate = parseMaximumAngleDelta,
 				ExpectsValue = true });
         }
 
@@ -791,7 +836,12 @@ namespace FLTTopoContour
                 programNotes.Add("   -thus a minRegionPoints setting of 100 would prevent the showing of any contours that did not enclose at least 100");
                 programNotes.Add("    points in the source data (region can be arbitrarily shaped)");
                 programNotes.Add("   -this removes very small 'nuisance' regions from data but take care, very large settings may remove important contours");
-                programNotes.Add("   -this feature is new and has received minimal testing, results may not be exact");
+				programNotes.Add("-svg will produce an svg (vector graphics) file instead of a bmp (bitmap)");
+				programNotes.Add(" -minpointdelta: if > 0, in svg output, minpointdelta is the minimum distance (meters) between points");
+				programNotes.Add(" -e.g. a minpointdelta of 50 would mean points in the final map are all at least 50 meters apart");
+				programNotes.Add(" -maxangledelta: if > 0, in svg output, this will override the minpointdelta amount to preserve points where a line makes");
+				programNotes.Add("  a turn greater than this amount (degrees)");
+				programNotes.Add(" -maxangledelta is ignored if no minpointdelta has been specified");
             }
         }
 
@@ -950,6 +1000,7 @@ namespace FLTTopoContour
 				if (_outputSVGFormat)
 				{
 					Console.WriteLine(optionTypeToSpecDict[OptionType.MinPointDelta].Description + " : " + _minimumVectorOutputPointDelta);
+					Console.WriteLine(optionTypeToSpecDict[OptionType.MaxAngleDelta].Description + " : " + _maximumAngleChange);
 				}
 
                 if (_minimumRegionDataPoints > 0)
@@ -1366,6 +1417,7 @@ namespace FLTTopoContour
                     setupData.OutputSVGFormat = _outputSVGFormat;
 					// convert to data points
 					setupData.MinimumPointDelta = _minimumVectorOutputPointDelta / _topoData.MetersPerCell();
+					setupData.MaximumAngleDeviationRadians = _maximumAngleChange * Constants.Trig.DegreesToRadians;
 
                     TopoMapGenerator generator = TopoMapGenerator.getGenerator( setupData );
                     generator.DetermineImageDimensions();

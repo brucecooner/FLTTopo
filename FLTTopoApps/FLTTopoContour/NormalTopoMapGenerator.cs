@@ -82,6 +82,15 @@ namespace FLTTopoContour
             timer.Stop();
             addTiming("quantization", timer.ElapsedMilliseconds);
 
+			// TESTING
+			/*
+			var pathFilterTest = new FLTTopoContour.PathFilterTest();
+			pathFilterTest.TestDistanceCriteria();
+			pathFilterTest.TestDistancePlusAngleCriteria();
+			return;
+			*/
+			// END TESTING
+
 			// ---- regions ----
 			timer.ResetAndStart();
 
@@ -117,13 +126,29 @@ namespace FLTTopoContour
 				if (includeCurrentRegion)
 				{
 					// construct point pipeline for this region
-					// hullBuilder -> pathFilter -> pointsListArray[regionIndex]
 					pointsListsArray[regionIndex] = new List<Tuple<int,int>>();
 
-					var pathFilter = new PathFilter(	new PathFilter.Parameters{ minimumDistanceBetweenPoints = _minimumDistanceBetweenPoints },
-														(point) => { pointsListsArray[regionIndex].Add(point); } );
+					RegionHullGenerator hullBuilder = null;
+					PathFilter			pathFilter = null;
 
-					var hullBuilder = new RegionHullGenerator( (point) => { pathFilter.handlePoint(point); } );
+					if (_minimumDistanceBetweenPoints > 0 || _maximumAngleDeltaRadians > 0)
+					{
+						// if path options specified, put a path filter in the pipe
+						// hullBuilder -> pathFilter -> pointsListArray[regionIndex]
+						pathFilter = new PathFilter(new PathFilter.Parameters
+						{
+							minimumDistanceBetweenPoints = _minimumDistanceBetweenPoints,
+							maximumAngleRadians = _maximumAngleDeltaRadians
+						},
+						(point) => { pointsListsArray[regionIndex].Add(point); });
+
+						hullBuilder = new RegionHullGenerator((point) => { pathFilter.HandlePoint(point); });
+					}
+					else
+					{
+						// if no path options specified, generate straight to list
+						hullBuilder = new RegionHullGenerator((point) => { pointsListsArray[regionIndex].Add(point); });
+					}
 					
 					hullBuilder.generate(regionsList[regionIndex]);
 
@@ -142,9 +167,6 @@ namespace FLTTopoContour
 
 			Console.WriteLine("Building svg");
 
-			// ---- optimize paths ----
-
-
 			// ---- svg ----
 			timer.ResetAndStart();
             var svgBuilder = new SVGBuilder.Builder();
@@ -159,7 +181,7 @@ namespace FLTTopoContour
 				svgBuilder.addPath(currentPoints);
 			}
 
-            svgBuilder.TestMakingAFile(_outputFilename + ".svg");
+            svgBuilder.CreateFile(_outputFilename + ".svg");
 
 			timer.Stop();
 			addTiming("svg creation", timer.ElapsedMilliseconds);

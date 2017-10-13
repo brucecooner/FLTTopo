@@ -8,4 +8,9 @@
         public const double MetersPerDegree = MetersPerMile * MilesPerDegree;
         public const double DegreesPerMeter = 1.0 / MetersPerDegree;
     }
+
+	public class Trig
+	{
+		public const double DegreesToRadians = 0.0174532925;
+	}
 }

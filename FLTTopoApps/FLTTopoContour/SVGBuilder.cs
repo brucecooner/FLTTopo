@@ -10,10 +10,20 @@ namespace SVGBuilder
 	// ==========================================================================================
     class Builder
     {
+		private const String _defaultPathColor = "#000000";
+
+		private class Path
+		{
+			public String colorHexTriplet = "#000000";
+
+			public List<Tuple<int,int>>	points = new List<Tuple<int,int>>();
+		}
+
 		private long _width = 0;
 		private long _height = 0;
 
-		private List<List<Tuple<int,int>>> _paths = new List<List<Tuple<int,int>>>();
+		//private List<List<Tuple<int,int>>> _paths = new List<List<Tuple<int,int>>>();
+		private List<Path>	_paths = new List<Path>();
 
 		private long _XTranslate = 0;
 		private long _YTranslate = 0;
@@ -41,11 +51,12 @@ namespace SVGBuilder
 		}
 
 		// -----------------------------------------------------------
-		public void addPath(List<Tuple<int,int>> addPath)
+		public void addPath(List<Tuple<int,int>> pathPoints, String pathColor = _defaultPathColor)
 		{
-			if (addPath.Count > 0)
+			// ignore empty paths
+			if (pathPoints.Count > 0)
 			{
-				_paths.Add(addPath);
+				_paths.Add( new Path { points = pathPoints, colorHexTriplet = pathColor } );
 			}
 		}
 
@@ -53,18 +64,18 @@ namespace SVGBuilder
 		// TODO : 
 		// -validate parameters
 		// -investigate where to put newlines
-		private void generatePath(System.IO.StreamWriter file, List<Tuple<int,int>> path)
+		private void generatePath(System.IO.StreamWriter file, Path sourcePath )
 		{
 			//  <path d="M150 0 L75 200 L225 200 Z" />
 			file.Write( "<path ");
 
-			file.Write("stroke=\"black\" stroke-width=\"1\" fill=\"none\"");
+			file.Write("stroke=\"" + sourcePath.colorHexTriplet + "\" stroke-width=\"1\" fill=\"none\"");
 				
 			file.Write(" d=\"" );
 
 			Boolean first = true;
 
-			foreach (var currentPoint in path)
+			foreach (var currentPoint in sourcePath.points)
 			{
 				String prefix = first ? "M" : "L";
 				first = false;
@@ -94,7 +105,7 @@ namespace SVGBuilder
 
 				foreach (var currentPath in _paths)
 				{
-					generatePath(file,currentPath);
+					generatePath( file, currentPath );
 				}
 
 				file.WriteLine("</svg>");

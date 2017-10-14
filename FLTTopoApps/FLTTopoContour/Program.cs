@@ -40,6 +40,8 @@ using OptionUtils;
     - nicer logging/messaging interface
 	- create 'test' type generator to handle testing (boooring)
 	- support svg output in all modes
+	- use 'notes' option to show notes
+	- may want more feedback in bmp modes
  * */
 
 namespace FLTTopoContour
@@ -115,22 +117,39 @@ namespace FLTTopoContour
         const float DefaultImageHeightScale = 1.0f;
 
         //const String DefaultBackgroundColorString = "FFFFFF";
-        const Int32 DefaultBackgroundColor = (Int32)(((byte)0xFF << 24) | (0xFF << 16) | (0xFF << 8) | 0xFF); // white
+        //const Int32 DefaultBackgroundColor = (Int32)(((byte)0xFF << 24) | (0xFF << 16) | (0xFF << 8) | 0xFF); // white
 
-        const String DefaultContourColorString = "000000";
-        const Int32 DefaultContourColor = (Int32)(((byte)0xFF << 24) | 0); // black
+		static readonly Graphics.Color DefaultBackgroundColor = new Graphics.Color{	hexTriplet = "FFFFFF",
+																				rgba = (Int32)(((byte)0xFF << 24) | (0xFF << 16) | (0xFF << 8) | 0xFF) };
 
-        const String DefaultAlternatingColor1String = "FF0000";
-        const Int32 DefaultAlternatingColor1 = (Int32)(((byte)0xFF << 24) | (0xFF << 16) | (0x0 << 8) | 0x0); // red
+        //const String DefaultContourColorString = "000000";
+        //const Int32 DefaultContourColor = (Int32)(((byte)0xFF << 24) | 0); // black
 
-        const String DefaultAlternatingColor2String = "00FF00";
-        const Int32 DefaultAlternatingColor2 = (Int32)(((byte)0xFF << 24) | (0x0 << 16) | (0xFF << 8) | 0x0); // green
+		static readonly Graphics.Color DefaultContourColor = new Graphics.Color{ hexTriplet = "000000", rgba = (Int32)(((byte)0xFF << 24) | 0) };
 
-        const String DefaultGradientLoColorString = "000000";
-        const Int32 DefaultGradientLoColor = (Int32)(((byte)0xFF << 24) | (0x55 << 16) | (0x55 << 8) | 0x55); // gray-ish
+        //const String DefaultAlternatingColor1String = "FF0000";
+        //const Int32 DefaultAlternatingColor1 = (Int32)(((byte)0xFF << 24) | (0xFF << 16) | (0x0 << 8) | 0x0); // red
 
-        const String DefaultGradientHiColorString = "000000";
-        const Int32 DefaultGradientHiColor = (Int32)(((byte)0xFF << 24) | (0xFF << 16) | (0xFF << 8) | 0xFF); // white
+		static readonly Graphics.Color DefaultAlternatingColor1 = new Graphics.Color {	hexTriplet = "FF0000",
+																				rgba = (Int32)(((byte)0xFF << 24) | (0xFF << 16) | (0x0 << 8) | 0x0) };
+
+        //const String DefaultAlternatingColor2String = "00FF00";
+        //const Int32 DefaultAlternatingColor2 = (Int32)(((byte)0xFF << 24) | (0x0 << 16) | (0xFF << 8) | 0x0); // green
+
+		static readonly Graphics.Color DefaultAlternatingColor2 = new Graphics.Color {	hexTriplet = "00FF00",
+																				rgba = (Int32)(((byte)0xFF << 24) | (0x0 << 16) | (0xFF << 8) | 0x0) };
+
+        //const String DefaultGradientLoColorString = "000000";
+        //const Int32 DefaultGradientLoColor = (Int32)(((byte)0xFF << 24) | (0x55 << 16) | (0x55 << 8) | 0x55); // gray-ish
+
+		static readonly Graphics.Color DefaultGradientLoColor = new Graphics.Color {	hexTriplet = "555555",
+																				rgba = (Int32)(((byte)0xFF << 24) | (0x55 << 16) | (0x55 << 8) | 0x55) };
+
+        //const String DefaultGradientHiColorString = "000000";
+        //const Int32 DefaultGradientHiColor = (Int32)(((byte)0xFF << 24) | (0xFF << 16) | (0xFF << 8) | 0xFF); // white
+
+		static readonly Graphics.Color DefaultGradientHiColor = new Graphics.Color {	hexTriplet = "FFFFFF",
+																				rgba = (Int32)(((byte)0xFF << 24) | (0xFF << 16) | (0xFF << 8) | 0xFF) };
 
         // OPTIONS
         // supported options
@@ -156,7 +175,8 @@ namespace FLTTopoContour
 
         static String parseErrorMessage = "";
 
-        static Dictionary<String, Int32> colorsDict = null;
+        //static Dictionary<String, Tuple<String,Int32>> colorsDict = null;
+		static Dictionary<String, Graphics.Color> colorsDict = null;
 
         static Boolean _appendCoordinatesToFilenames = DefaultAppendCoordinatesToFilenames;
 
@@ -271,20 +291,20 @@ namespace FLTTopoContour
 
         // ------------------------------------------------------
         // generalized color parsing
-        static private Boolean parseColor( String input, String colorDescription, ref String parseErrorString, String colorsDictKey )
+        static private Boolean parseColor( String inputHexTriplet, String colorDescription, ref String parseErrorString, String colorsDictKey )
         {
             Boolean parsed = true;
 
             String parseError = "";
-            Int32 color = OptionUtils.ParseSupport.parseColorHexTriplet(input, ref parsed, ref parseError);
+            Int32 color = OptionUtils.ParseSupport.parseColorHexTriplet(inputHexTriplet, ref parsed, ref parseError);
 
             if (false == parsed)
             {
-                parseErrorString = "Converting '" + input + "' to " + colorDescription + ", " + parseError;
+                parseErrorString = "Converting '" + inputHexTriplet + "' to " + colorDescription + ", " + parseError;
             }
             else
             {
-                colorsDict[ colorsDictKey ] = color;
+				colorsDict[ colorsDictKey ] = new Graphics.Color {  hexTriplet = inputHexTriplet, rgba = color };
             } 
 
             return parsed;
@@ -1011,27 +1031,27 @@ namespace FLTTopoContour
                 // only report colors if changed from default
                 if ( colorsDict[ TopoMapGenerator.colorType.bgcolor.ToString() ] != DefaultBackgroundColor )
                 {
-                    Console.WriteLine(optionTypeToSpecDict[OptionType.BackgroundColor].Description + " : " + OptionUtils.ParseSupport.ARGBColorToHexTriplet(colorsDict[TopoMapGenerator.colorType.bgcolor.ToString()]));
+                    Console.WriteLine(optionTypeToSpecDict[OptionType.BackgroundColor].Description + " : " + colorsDict[TopoMapGenerator.colorType.bgcolor.ToString()].hexTriplet );//OptionUtils.ParseSupport.ARGBColorToHexTriplet(colorsDict[TopoMapGenerator.colorType.bgcolor.ToString()]));
                 }
                 if (colorsDict[TopoMapGenerator.colorType.concolor.ToString()] != DefaultContourColor)
                 {
-                    Console.WriteLine(optionTypeToSpecDict[OptionType.ContourColor].Description + " : " + OptionUtils.ParseSupport.ARGBColorToHexTriplet( colorsDict[ TopoMapGenerator.colorType.concolor.ToString() ] ) );
+                    Console.WriteLine(optionTypeToSpecDict[OptionType.ContourColor].Description + " : " + colorsDict[ TopoMapGenerator.colorType.concolor.ToString() ].hexTriplet );// OptionUtils.ParseSupport.ARGBColorToHexTriplet( colorsDict[ TopoMapGenerator.colorType.concolor.ToString() ] ) );
                 }
                 if ( colorsDict[TopoMapGenerator.colorType.altcolor1.ToString()] != DefaultAlternatingColor1 )
                 {
-                    Console.WriteLine(optionTypeToSpecDict[OptionType.AlternatingColor1].Description + " : " + OptionUtils.ParseSupport.ARGBColorToHexTriplet(colorsDict[TopoMapGenerator.colorType.altcolor1.ToString()]));
+                    Console.WriteLine(optionTypeToSpecDict[OptionType.AlternatingColor1].Description + " : " + colorsDict[TopoMapGenerator.colorType.altcolor1.ToString()].hexTriplet );//OptionUtils.ParseSupport.ARGBColorToHexTriplet(colorsDict[TopoMapGenerator.colorType.altcolor1.ToString()]));
                 }
                 if ( colorsDict[TopoMapGenerator.colorType.altcolor2.ToString() ] != DefaultAlternatingColor2)
                 {
-                    Console.WriteLine(optionTypeToSpecDict[OptionType.AlternatingColor2].Description + " : " + OptionUtils.ParseSupport.ARGBColorToHexTriplet(colorsDict[TopoMapGenerator.colorType.altcolor2.ToString()]));
+                    Console.WriteLine(optionTypeToSpecDict[OptionType.AlternatingColor2].Description + " : " + colorsDict[TopoMapGenerator.colorType.altcolor2.ToString()].hexTriplet );//OptionUtils.ParseSupport.ARGBColorToHexTriplet(colorsDict[TopoMapGenerator.colorType.altcolor2.ToString()]));
                 }
                 if ( colorsDict[TopoMapGenerator.colorType.gradlocolor.ToString() ] != DefaultGradientLoColor)
                 {
-                    Console.WriteLine(optionTypeToSpecDict[OptionType.GradientLoColor].Description + " : " + OptionUtils.ParseSupport.ARGBColorToHexTriplet(colorsDict[TopoMapGenerator.colorType.gradlocolor.ToString()]));
+                    Console.WriteLine(optionTypeToSpecDict[OptionType.GradientLoColor].Description + " : " + colorsDict[TopoMapGenerator.colorType.gradlocolor.ToString()].hexTriplet );//OptionUtils.ParseSupport.ARGBColorToHexTriplet(colorsDict[TopoMapGenerator.colorType.gradlocolor.ToString()]));
                 }
                 if ( colorsDict[TopoMapGenerator.colorType.gradhicolor.ToString() ] != DefaultGradientHiColor)
                 {
-                    Console.WriteLine(optionTypeToSpecDict[OptionType.GradientHiColor].Description + " : " + OptionUtils.ParseSupport.ARGBColorToHexTriplet(colorsDict[TopoMapGenerator.colorType.gradhicolor.ToString()]));
+                    Console.WriteLine(optionTypeToSpecDict[OptionType.GradientHiColor].Description + " : " + colorsDict[TopoMapGenerator.colorType.gradhicolor.ToString()].hexTriplet );//OptionUtils.ParseSupport.ARGBColorToHexTriplet(colorsDict[TopoMapGenerator.colorType.gradhicolor.ToString()]));
                 }
 
                 echoRectExtents();
@@ -1269,7 +1289,7 @@ namespace FLTTopoContour
         // -------------------------------------------------------------
         static void initColorsDictionary()
         {
-            colorsDict = new Dictionary<string,int>(15);
+            colorsDict = new Dictionary<string, Graphics.Color>(15);
 
             colorsDict[ TopoMapGenerator.colorType.concolor.ToString() ] = DefaultContourColor;
             colorsDict[ TopoMapGenerator.colorType.bgcolor.ToString() ] = DefaultBackgroundColor;

@@ -24,7 +24,7 @@ namespace FLTTopoContour
         private Int32 normalTopoMapPixelDelegate( float[,] heights )
         {
             // current != left OR current != above
-            return ( heightCurrent( heights ) != heightW(heights) || heightCurrent(heights) != heightN(heights)) ? _contourLineColor : _backgroundColor;
+            return ( heightCurrent( heights ) != heightW(heights) || heightCurrent(heights) != heightN(heights)) ? _contourLineColor_RGBA : _backgroundColor_RGBA;
         }
 
         // -----------------------------------------------------------------------------------------------
@@ -175,10 +175,11 @@ namespace FLTTopoContour
 			svgBuilder.SetTranslate( -rectLeft, -rectTop );
 			// size to rect
 			svgBuilder.SetWidthAndHeight( rectRight - rectLeft + 1, rectBottom - rectTop + 1);
+			svgBuilder.SetBackgroundColor( _backgroundColor_Hex );
 
 			foreach (var currentPoints in pointsListsArray)
 			{
-				svgBuilder.addPath(currentPoints);
+				svgBuilder.addPath(currentPoints, _contourLineColor_Hex );
 			}
 
             svgBuilder.CreateFile(_outputFilename + ".svg");

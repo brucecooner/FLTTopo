@@ -28,6 +28,7 @@ namespace SVGBuilder
 		private long _XTranslate = 0;
 		private long _YTranslate = 0;
 
+		private String _backgroundColorHexTriplet;
 
 		// --------------------------------------------
 		// constructor 
@@ -51,6 +52,12 @@ namespace SVGBuilder
 		}
 
 		// -----------------------------------------------------------
+		public void SetBackgroundColor( String newColorHexTriplet )
+		{
+			_backgroundColorHexTriplet = newColorHexTriplet;
+		}
+
+		// -----------------------------------------------------------
 		public void addPath(List<Tuple<int,int>> pathPoints, String pathColor = _defaultPathColor)
 		{
 			// ignore empty paths
@@ -69,7 +76,7 @@ namespace SVGBuilder
 			//  <path d="M150 0 L75 200 L225 200 Z" />
 			file.Write( "<path ");
 
-			file.Write("stroke=\"" + sourcePath.colorHexTriplet + "\" stroke-width=\"1\" fill=\"none\"");
+			file.Write("stroke=\"#" + sourcePath.colorHexTriplet + "\" stroke-width=\"1\" fill=\"none\"");
 				
 			file.Write(" d=\"" );
 
@@ -95,6 +102,8 @@ namespace SVGBuilder
 			{
 				file.WriteLine("<svg version = \"1.1\"");
 				file.WriteLine("baseProfile = \"full\"");
+				file.WriteLine( "style = \"background-color:#" + _backgroundColorHexTriplet + ";\"" );
+
 				file.WriteLine("width = \"{0}\" height = \"{1}\"",_width,_height);
 
 				file.WriteLine("xmlns = \"http://www.w3.org/2000/svg\">");

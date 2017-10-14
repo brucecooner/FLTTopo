@@ -8,6 +8,8 @@ namespace FLTTopoContour
 {
 	// responsible for taking a path of 2d integer (currently) points and filtering by some settings
 	// NOTE: assumes path points are absolute (world) coordinates, and NOT relative to previously added point(s)
+	// TODO:
+	// - use algorithm that increases point density based on path complexity to preserve curvy parts?
 	public class PathFilter
 	{
 		// ======================================

@@ -43,7 +43,8 @@ namespace FLTTopoContour
 		{ get { return _parameters.MaximumAngleDeviationRadians; } }
 
         // note : derived classes can declare their color names according to need
-        protected Dictionary<String, Int32> _colorsDict = new Dictionary<String, Int32>( 10 );
+        //protected Dictionary<String, Int32> _colorsDict = new Dictionary<String, Int32>( 10 );
+        protected Dictionary<String, Graphics.Color> _colorsDict = new Dictionary<String, Graphics.Color>( 10 );
 
         public enum colorType
         {
@@ -55,32 +56,26 @@ namespace FLTTopoContour
             gradhicolor
         }
 
-        // ---------------------------------------------------------
-        public void setColor( String colorName, Int32 colorValue )
-        {
-            if ( _colorsDict.ContainsKey( colorName ) )
-            {
-                _colorsDict[ colorName ] = colorValue;
-            }
-            else
-            {
-                _colorsDict.Add( colorName, colorValue );
-            }
-        }
-
         // ------------------------------------------------------
-        public void setColorsDict( Dictionary<String,Int32> newDict )
+        public void setColorsDict( Dictionary<String,Graphics.Color> newDict )
         {
             _colorsDict = newDict;
         }
 
         // color helpers
-        protected Int32 _backgroundColor    { get { return _colorsDict[colorType.bgcolor.ToString()]; } }
-        protected Int32 _contourLineColor   { get { return _colorsDict[colorType.concolor.ToString()]; } }
-        protected Int32 _color1             { get { return _colorsDict[colorType.altcolor1.ToString()]; } }
-        protected Int32 _color2             { get { return _colorsDict[colorType.altcolor2.ToString()]; } }
-        protected Int32 _lowColor           { get { return _colorsDict[colorType.gradlocolor.ToString()]; } }
-        protected Int32 _highColor          { get { return _colorsDict[colorType.gradhicolor.ToString()]; } }
+        protected Int32 _backgroundColor_RGBA    { get { return _colorsDict[colorType.bgcolor.ToString()].rgba; } }
+        protected Int32 _contourLineColor_RGBA   { get { return _colorsDict[colorType.concolor.ToString()].rgba; } }
+        protected Int32 _color1_RGBA             { get { return _colorsDict[colorType.altcolor1.ToString()].rgba; } }
+        protected Int32 _color2_RGBA             { get { return _colorsDict[colorType.altcolor2.ToString()].rgba; } }
+        protected Int32 _lowColor_RGBA           { get { return _colorsDict[colorType.gradlocolor.ToString()].rgba; } }
+        protected Int32 _highColor_RGBA          { get { return _colorsDict[colorType.gradhicolor.ToString()].rgba; } }
+
+        protected String _backgroundColor_Hex    { get { return _colorsDict[colorType.bgcolor.ToString()].hexTriplet; } }
+        protected String _contourLineColor_Hex   { get { return _colorsDict[colorType.concolor.ToString()].hexTriplet; } }
+        protected String _color1_Hex             { get { return _colorsDict[colorType.altcolor1.ToString()].hexTriplet; } }
+        protected String _color2_Hex             { get { return _colorsDict[colorType.altcolor2.ToString()].hexTriplet; } }
+        protected String _lowColor_Hex           { get { return _colorsDict[colorType.gradlocolor.ToString()].hexTriplet; } }
+        protected String _highColor_Hex          { get { return _colorsDict[colorType.gradhicolor.ToString()].hexTriplet; } }
 
         // ///////////////////////////////////////////////////////////////////////////////////////////////////
         // used when constructing a generator (so I don't have to rewrite ALL the constructors when I add more parameters)
@@ -711,22 +706,22 @@ namespace FLTTopoContour
 
             if ( drawCurrent )
             {
-                currentPixel = _backgroundColor;
+                currentPixel = _backgroundColor_RGBA;
 
                 Int32 evenOdd = Convert.ToInt32(highestValue / _contourHeights % 2);
 
                 if (evenOdd <= 0)
                 {
-                    currentPixel = _color1;
+                    currentPixel = _color1_RGBA;
                 }
                 else
                 {
-                    currentPixel = _color2;
+                    currentPixel = _color2_RGBA;
                 }
             }
             else
             {
-                currentPixel = _backgroundColor;
+                currentPixel = _backgroundColor_RGBA;
             }
 
             return currentPixel;
@@ -820,13 +815,13 @@ namespace FLTTopoContour
             _oneOverRange = 1.0f / range;
 
             // -- precalcs --
-            _lowRed = (_lowColor >> 16) & 0xFF;
-            _lowGreen = (_lowColor >> 8) & 0xFF;
-            _lowBlue = _lowColor & 0xFF;
+            _lowRed = (_lowColor_RGBA >> 16) & 0xFF;
+            _lowGreen = (_lowColor_RGBA >> 8) & 0xFF;
+            _lowBlue = _lowColor_RGBA & 0xFF;
 
-            _highRed = (_highColor >> 16) & 0xFF;
-            _highGreen = (_highColor >> 8) & 0xFF;
-            _highBlue = _highColor & 0xFF;
+            _highRed = (_highColor_RGBA >> 16) & 0xFF;
+            _highGreen = (_highColor_RGBA >> 8) & 0xFF;
+            _highBlue = _highColor_RGBA & 0xFF;
 
             _redRange = _highRed - _lowRed;
             _greenRange = _highGreen - _lowGreen;
@@ -864,7 +859,7 @@ namespace FLTTopoContour
                                     ||  (heightE(heights) < current )
                                     ||  (heightSW(heights) < current )
                                     ||  (heightS(heights) < current )
-                                    ||  (heightSE(heights) < current ) ) ? _contourLineColor : _backgroundColor;
+                                    ||  (heightSE(heights) < current ) ) ? _contourLineColor_RGBA : _backgroundColor_RGBA;
         }
 
         // -----------------------------------------------------------------------------------------------
@@ -1391,7 +1386,7 @@ namespace FLTTopoContour
             stopwatch.Reset();
             stopwatch.Start();
 
-            fillPixelBuffer( _backgroundColor );
+            fillPixelBuffer( _backgroundColor_RGBA );
 
             // -- inits --
             double currentLatitude = sliceDesc.Start.Latitude();
@@ -1433,7 +1428,7 @@ namespace FLTTopoContour
 
                 yCoordinates[ currentImageX ] = currentImageY;
 
-                _pixels[ (currentImageY * _imageWidth) + currentImageX ] = _contourLineColor;
+                _pixels[ (currentImageY * _imageWidth) + currentImageX ] = _contourLineColor_RGBA;
 
                 // check for vertical gaps between consecutive pixels (>1 pixel apart)
                 // It might be better to break up the slice into a series of lines, and handle these gaps that way (by iterating
@@ -1447,8 +1442,8 @@ namespace FLTTopoContour
                         int midY = (yCoordinates[ currentImageX ] + yCoordinates[ currentImageX - 1 ]) / 2;
 
                         // fill FROM previous y TO current, but half on each coordinate
-                        verticalLine( currentImageX - 1, yCoordinates[ currentImageX - 1 ], midY, _contourLineColor );
-                        verticalLine( currentImageX, midY, yCoordinates[ currentImageX ], _contourLineColor );
+                        verticalLine( currentImageX - 1, yCoordinates[ currentImageX - 1 ], midY, _contourLineColor_RGBA );
+                        verticalLine( currentImageX, midY, yCoordinates[ currentImageX ], _contourLineColor_RGBA );
                     }
                 }
 

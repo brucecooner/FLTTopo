@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
-    <StartArguments>floatn34w113_13 svg</StartArguments>
+    <StartArguments>maptype=alternatingcolors floatn34w113_13 rectnwse=33.3902,-112.3730,33.0916,-112.1326 contours=100 svg minregionpoints=150 outfile=SVGTesting\svgtest-testBew minpointdelta=150</StartArguments>
     <StartWorkingDirectory>D:\Bruce\FLTTopo\n34w113\</StartWorkingDirectory>
   </PropertyGroup>
   <PropertyGroup>

@@ -57,6 +57,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AlternatingColorTopoMapGenerator.cs" />
     <Compile Include="Color.cs" />
     <Compile Include="FLTTopoDataExtensions.cs" />
     <Compile Include="Constants.cs" />

@@ -10,6 +10,8 @@ using FLTDataLib;
 
 // classes which (via common interface) generate topo map data in various forms
 // Note : doesn't do any validation on input parameters, assumes they have been validated against the data
+// TODO:
+// - if all generators support SVG, move the bmp/svg selection logic into the base class
 namespace FLTTopoContour
 {
     // base class
@@ -420,6 +422,7 @@ namespace FLTTopoContour
 			switch (mapType)
 			{
 				case MapType.Normal:
+				case MapType.AlternatingColors:
 					supports = true;
 					break;
 			}
@@ -685,6 +688,7 @@ namespace FLTTopoContour
 	}   // end class TopoMapGenerator
 
     // /////////////////////////////////////////////////////////////////////////////////////////////////////////
+	/*
     public class AlternatingColorContourMapGenerator : TopoMapGenerator
     {
         public override String GetName() { return "alternating color"; }
@@ -750,6 +754,7 @@ namespace FLTTopoContour
             DefaultGenerate();
         }
     }
+	*/
 
     // /////////////////////////////////////////////////////////////////////////////////////////////////////////
     public class GradientTopoMapGenerator : TopoMapGenerator

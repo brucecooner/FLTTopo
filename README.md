@@ -3,7 +3,10 @@ FLTTopo is a utility (and supporting libraries) written in C# to convert USGS fl
 
 Feed FLTTopoContour a pair of hdr (header) and flt (data) files from the USGS National Map Viewer download service (http://viewer.nationalmap.gov/viewer/) and it can output a rough, but properly contoured topographical map with contours on integral heights that you can specify (the default is 200).  
 
-It was developed in Windows and currently only outputs .bmp images. Nothing really fancy is happening here, it's just quantizing the height data and doing edge detection on the result. That said, its output can be useful for certain projects.
+Nothing really fancy is happening here, it's just quantizing the height data and doing edge detection on the result. That said, its output can be useful for certain projects.
+
+It is developed in Windows and currently only outputs .bmp images in all modes. 
+SVG output is supported in some modes currently, with more to come. The paths by default are very point dense. A simple distance filter with angle override (to preserve large changes in direction) is available for lessening the number of points, but the results aren't very pretty at the current time. 
 
 Check out the Gallery folder for some example maps generated with this application.
 
@@ -24,13 +27,13 @@ Notes:
 Caveat Emptor:
 * I could not find a way to control the extents of the data the USGS website viewer allows you to select and download. The minimum they will ship you is a 1 degree by 1 degree area, which comes out to a lot of real estate (about 69 miles on a side at the equator, decreasing with latitude). So you'll probably have a map covering a much larger area than you were looking for. I've added options to the program to allow you to specify an inset area of the map to process and output (by dataset indices or lat/long coordinates).
 
-* The feature you want to map may lie across a 1 degree border, and therefore not be constructable from a single input file. You should be able to produce two maps from adjacent grids' data and join them in a graphics editing program.
+* The feature you want to map may lie across a 1 degree border, and therefore not be constructable from a single input file. You may be able to produce two maps from adjacent grids' data and join them in a graphics editing program.
 
 * You'll need 1/3 arcsecond source data to get nice smooth output. This means there'll be quite a lot of input data. The 1x1 degree grids run to several hundred megabytes.
 
 * It's only been built and run under Windows so far. No funky libraries are in use, Xamarin will probably happily build it, but I haven't looked into compatibility with other systems or using an image library to support multiple formats. The FLTDataLib does the data reading work, and should be a decent core to build whatever port/utility you want on top of.
 
-* It currently only supports raster output, and the contour lines aren't smoothed. Sorry, this isn't intended to be a study in graphics techniques (and the output is usable for my purposes in a pixelated form). You should, of course, be able to generate a gradient type map and apply edge detection in a graphics editing program to produce different styles of line if you like. I've fed its output to a couple of SVG converters with decent results.
+* The bitmap contour lines aren't smoothed, and only come in single pixel width. Sorry, this isn't intended to be a study in graphics techniques (and the output is usable for my purposes in a pixelated form). You could possibly generate a map and play with it in a graphics program if you need something different.
 
 * I haven't done much work toward making this truly distributable software,  you'll have to mind the placement of the flt data library dll so the program works.
 
